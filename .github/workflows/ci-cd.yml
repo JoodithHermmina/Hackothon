@@ -1,12 +1,19 @@
 name: CI/CD Pipeline
 
-# Testing AWS Secrets Manager Integration
+# Testing AWS Secrets Manager Integration with OIDC Authentication
+# OIDC Provider: token.actions.githubusercontent.com
+# IAM Role: github-actions-oidc-role
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+
+# Add permissions needed for OIDC
+permissions:
+  id-token: write
+  contents: read
 
 env:
   AWS_REGION: ap-south-1
@@ -71,6 +78,12 @@ jobs:
     steps:
     - name: Check out the repo
       uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::565393046834:role/github-actions-oidc-role
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Get AWS credentials from Secrets Manager
       id: get-aws-credentials
@@ -137,13 +150,6 @@ jobs:
           exit 1
         fi
         echo "AWS credentials verified successfully"
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ steps.get-aws-credentials.outputs.aws_access_key_id }}
-        aws-secret-access-key: ${{ steps.get-aws-credentials.outputs.aws_secret_access_key }}
-        aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
       id: login-ecr
