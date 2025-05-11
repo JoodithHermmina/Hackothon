@@ -12,6 +12,13 @@ resource "aws_secretsmanager_secret" "app_secrets" {
   lifecycle {
     # This prevents failures when Terraform can't read the secret during initial creation
     create_before_destroy = true
+    # Prevent Terraform from recreating or modifying existing secrets
+    ignore_changes = [
+      description,
+      tags
+    ]
+    # Prevent recreation of the secret if it already exists
+    prevent_destroy = true
   }
 }
 
