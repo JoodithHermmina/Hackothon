@@ -3,6 +3,7 @@ name: CI/CD Pipeline
 # Testing AWS Secrets Manager Integration with OIDC Authentication
 # OIDC Provider: token.actions.githubusercontent.com
 # IAM Role: github-actions-oidc-role
+# Trigger: Testing complete configuration with AWS Secrets Manager and OIDC
 on:
   push:
     branches: [ main ]
@@ -194,6 +195,13 @@ jobs:
     - name: Check out the repo
       uses: actions/checkout@v3
 
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::565393046834:role/github-actions-oidc-role
+        aws-region: ${{ env.AWS_REGION }}
+        audience: sts.amazonaws.com
+
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
       with:
@@ -262,13 +270,6 @@ jobs:
           exit 1
         fi
         echo "AWS credentials verified successfully"
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ steps.get-aws-credentials.outputs.aws_access_key_id }}
-        aws-secret-access-key: ${{ steps.get-aws-credentials.outputs.aws_secret_access_key }}
-        aws-region: ${{ env.AWS_REGION }}
 
     - name: Create S3 bucket for Terraform state if not exists
       run: |
