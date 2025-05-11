@@ -5,7 +5,8 @@
             "Effect": "Allow",
             "Action": [
                 "secretsmanager:GetSecretValue",
-                "secretsmanager:CreateSecret"
+                "secretsmanager:CreateSecret",
+                "secretsmanager:TagResource"
             ],
             "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:${APP_NAME}/${ENVIRONMENT}/app-secrets*"
         },
@@ -54,13 +55,14 @@
                 "ecs:DescribeTaskDefinition",
                 "ecs:RegisterTaskDefinition",
                 "ecs:ListTasks",
-                "ecs:DescribeTasks"
+                "ecs:DescribeTasks",
+                "ecs:ListTaskDefinitions",
+                "ecs:DeregisterTaskDefinition",
+                "ecs:CreateService",
+                "ecs:DeleteService",
+                "ecs:ListServices"
             ],
-            "Resource": [
-                "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:cluster/*",
-                "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:service/*",
-                "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT_ID}:task-definition/*"
-            ]
+            "Resource": "*"
         },
         {
             "Effect": "Allow",
@@ -76,6 +78,14 @@
                 "arn:aws:iam::${AWS_ACCOUNT_ID}:role/aws-service-role/*",
                 "arn:aws:iam::${AWS_ACCOUNT_ID}:role/service-role/*"
             ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:GenerateDataKey",
+                "kms:Decrypt"
+            ],
+            "Resource": "*"
         }
     ]
 } 
