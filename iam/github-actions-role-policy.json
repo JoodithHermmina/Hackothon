@@ -33,7 +33,8 @@
         {
             "Effect": "Allow",
             "Action": [
-                "ecr:GetAuthorizationToken"
+                "ecr:GetAuthorizationToken",
+                "ecr:DescribeRepositories"
             ],
             "Resource": "*"
         },
