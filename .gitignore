@@ -8,7 +8,9 @@
 secrets.txt
 
 # Terraform
-.terraform
+*.tfvars
+*.tfvars.json
+.terraform/
 terraform.tfstate
 terraform.tfstate.backup
 

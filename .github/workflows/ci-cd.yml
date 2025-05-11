@@ -18,9 +18,14 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ap-south-1
-  SECRET_NAME: resume-builder/dev/app-secrets
+  AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+  SECRET_NAME: ${{ secrets.SECRET_NAME || 'resume-builder/dev/app-secrets' }}
   REQUIRED_SECRETS: "AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ACCOUNT_ID APP_DOMAIN"
+  IAM_ROLE: ${{ secrets.IAM_ROLE || 'github-actions-oidc-role' }}
+  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET || 'resume-builder-tf-state' }}
+  APP_NAME: ${{ secrets.APP_NAME || 'resume-builder' }}
+  ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'dev' }}
+  ALLOW_RESOURCE_DELETION: ${{ secrets.ALLOW_RESOURCE_DELETION || 'false' }}
 
 jobs:
   # test:
@@ -84,7 +89,7 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::565393046834:role/github-actions-oidc-role
+        role-to-assume: arn:aws:iam::${{ steps.get-aws-credentials.outputs.aws_account_id }}:role/${{ env.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
         audience: sts.amazonaws.com
 
@@ -129,20 +134,30 @@ jobs:
         # Validate required secrets
         validate_secrets "$SECRETS"
         
+        # Extract and validate AWS Account ID
+        AWS_ACCOUNT_ID=$(echo "$SECRETS" | jq -r '.AWS_ACCOUNT_ID')
+        if [[ ! "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+          echo "Error: Invalid AWS Account ID format. Expected 12 digits."
+          exit 1
+        fi
+        
         # Mask sensitive values
         echo "Masking sensitive values..."
         echo "::add-mask::$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)"
         echo "::add-mask::$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)"
-        echo "::add-mask::$(echo $SECRETS | jq -r .APP_DOMAIN)"
+        echo "::add-mask::$AWS_ACCOUNT_ID"
         
         # Export AWS credentials for subsequent steps
         echo "Exporting credentials..."
-        echo "aws_access_key_id=$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)" >> $GITHUB_OUTPUT
-        echo "aws_secret_access_key=$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)" >> $GITHUB_OUTPUT
-        echo "aws_account_id=$(echo $SECRETS | jq -r .AWS_ACCOUNT_ID)" >> $GITHUB_OUTPUT
-        echo "app_domain=$(echo $SECRETS | jq -r .APP_DOMAIN)" >> $GITHUB_OUTPUT
+        {
+          echo "aws_access_key_id=$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)"
+          echo "aws_secret_access_key=$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)"
+          echo "aws_account_id=$AWS_ACCOUNT_ID"
+          echo "app_domain=$(echo $SECRETS | jq -r .APP_DOMAIN)"
+        } >> $GITHUB_OUTPUT
         
         echo "Successfully retrieved and validated secrets"
+        echo "AWS Account ID has been set in outputs"
 
     - name: Verify AWS credentials
       id: verify-credentials
@@ -199,7 +214,7 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::565393046834:role/github-actions-oidc-role
+        role-to-assume: arn:aws:iam::${{ steps.get-aws-credentials.outputs.aws_account_id }}:role/${{ env.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
         audience: sts.amazonaws.com
 
@@ -249,18 +264,30 @@ jobs:
         # Validate required secrets
         validate_secrets "$SECRETS"
         
+        # Extract and validate AWS Account ID
+        AWS_ACCOUNT_ID=$(echo "$SECRETS" | jq -r '.AWS_ACCOUNT_ID')
+        if [[ ! "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]]; then
+          echo "Error: Invalid AWS Account ID format. Expected 12 digits."
+          exit 1
+        fi
+        
         # Mask sensitive values
         echo "Masking sensitive values..."
         echo "::add-mask::$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)"
         echo "::add-mask::$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)"
+        echo "::add-mask::$AWS_ACCOUNT_ID"
         
         # Export AWS credentials for subsequent steps
         echo "Exporting credentials..."
-        echo "aws_access_key_id=$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)" >> $GITHUB_OUTPUT
-        echo "aws_secret_access_key=$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)" >> $GITHUB_OUTPUT
-        echo "aws_account_id=$(echo $SECRETS | jq -r .AWS_ACCOUNT_ID)" >> $GITHUB_OUTPUT
+        {
+          echo "aws_access_key_id=$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)"
+          echo "aws_secret_access_key=$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)"
+          echo "aws_account_id=$AWS_ACCOUNT_ID"
+          echo "app_domain=$(echo $SECRETS | jq -r .APP_DOMAIN)"
+        } >> $GITHUB_OUTPUT
         
         echo "Successfully retrieved and validated secrets"
+        echo "AWS Account ID has been set in outputs"
 
     - name: Verify AWS credentials
       id: verify-credentials
@@ -274,8 +301,26 @@ jobs:
 
     - name: Create S3 bucket for Terraform state if not exists
       run: |
-        aws s3api head-bucket --bucket resume-builder-tf-state 2>/dev/null || \
-        aws s3 mb s3://resume-builder-tf-state --region ${{ env.AWS_REGION }}
+        echo "Checking if Terraform state bucket exists..."
+        if ! aws s3api head-bucket --bucket ${{ env.TF_STATE_BUCKET }} 2>/dev/null; then
+          echo "Creating Terraform state bucket..."
+          if aws s3 mb s3://${{ env.TF_STATE_BUCKET }} --region ${{ env.AWS_REGION }}; then
+            echo "Enabling versioning for state bucket..."
+            aws s3api put-bucket-versioning \
+              --bucket ${{ env.TF_STATE_BUCKET }} \
+              --versioning-configuration Status=Enabled
+            
+            echo "Adding bucket encryption..."
+            aws s3api put-bucket-encryption \
+              --bucket ${{ env.TF_STATE_BUCKET }} \
+              --server-side-encryption-configuration '{"Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]}'
+          else
+            echo "Failed to create state bucket. Check permissions and bucket name availability."
+            exit 1
+          fi
+        else
+          echo "State bucket already exists"
+        fi
 
     - name: Terraform Init
       run: |
@@ -283,14 +328,105 @@ jobs:
         terraform init
 
     - name: Terraform Plan
+      env:
+        TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
+        TF_VAR_app_name: ${{ env.APP_NAME }}
+        TF_VAR_tf_state_bucket: ${{ env.TF_STATE_BUCKET }}
+        TF_VAR_ecr_repositories: '["resume-backend", "resume-frontend"]'
       run: |
         cd terraform
-        terraform plan -var "image_tag=${{ github.sha }}" -var "aws_region=${{ env.AWS_REGION }}"
+        
+        # Validate AWS Account ID
+        if [ -z "$TF_VAR_aws_account_id" ]; then
+          echo "Error: AWS Account ID is not set"
+          echo "Debugging information:"
+          echo "get-aws-credentials step output: ${{ steps.get-aws-credentials.outputs.aws_account_id }}"
+          echo "Current environment variables:"
+          env | grep -i aws
+          exit 1
+        fi
+        
+        echo "Using AWS Account ID: $TF_VAR_aws_account_id"
+        
+        # Save plan to file for validation
+        terraform plan \
+          -var "aws_account_id=$TF_VAR_aws_account_id" \
+          -var "image_tag=${{ github.sha }}" \
+          -var "aws_region=${{ env.AWS_REGION }}" \
+          -out=tfplan
+
+    - name: Validate Terraform Configuration
+      env:
+        TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
+        TF_VAR_app_name: ${{ env.APP_NAME }}
+        TF_VAR_tf_state_bucket: ${{ env.TF_STATE_BUCKET }}
+        TF_VAR_ecr_repositories: '["resume-backend", "resume-frontend"]'
+      run: |
+        cd terraform
+        
+        echo "Running Terraform format check..."
+        terraform fmt -check -recursive || {
+          echo "Error: Terraform files are not properly formatted"
+          terraform fmt -diff -recursive
+          exit 1
+        }
+        
+        echo "Running Terraform validation..."
+        terraform validate || {
+          echo "Error: Terraform configuration is invalid"
+          exit 1
+        }
+        
+        echo "Checking for sensitive data in Terraform files..."
+        if grep -r -E "arn:aws|[0-9]{12}|aws_access_key|aws_secret_key" *.tf; then
+          echo "Warning: Found potential sensitive data in Terraform files"
+          exit 1
+        fi
+        
+        echo "Analyzing Terraform plan..."
+        terraform show -json tfplan > tfplan.json
+        
+        # Check for resource deletions
+        if jq -e '.resource_changes[] | select(.change.actions[] | contains("delete"))' tfplan.json > /dev/null; then
+          echo "Warning: Plan includes resource deletions. Please review carefully!"
+          jq '.resource_changes[] | select(.change.actions[] | contains("delete")) | .address' tfplan.json
+          echo "Do you want to continue? (Set ALLOW_RESOURCE_DELETION=true to proceed)"
+          if [[ "${ALLOW_RESOURCE_DELETION}" != "true" ]]; then
+            exit 1
+          fi
+        fi
+        
+        # Check for critical resource changes
+        critical_resources=(
+          "aws_ecs_service"
+          "aws_ecs_cluster"
+          "aws_ecr_repository"
+          "aws_iam_role"
+        )
+        
+        for resource in "${critical_resources[@]}"; do
+          if jq -e --arg res "$resource" '.resource_changes[] | select(.type == $res and .change.actions[] | contains("update"))' tfplan.json > /dev/null; then
+            echo "Warning: Plan includes changes to critical resource: $resource"
+            jq --arg res "$resource" '.resource_changes[] | select(.type == $res and .change.actions[] | contains("update"))' tfplan.json
+          fi
+        done
+        
+        echo "Validation completed successfully!"
 
     - name: Terraform Apply
+      if: success()
+      env:
+        TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
+        TF_VAR_app_name: ${{ env.APP_NAME }}
+        TF_VAR_tf_state_bucket: ${{ env.TF_STATE_BUCKET }}
+        TF_VAR_ecr_repositories: '["resume-backend", "resume-frontend"]'
       run: |
         cd terraform
-        terraform apply -auto-approve -var "image_tag=${{ github.sha }}" -var "aws_region=${{ env.AWS_REGION }}"
+        # Apply the validated plan
+        terraform apply tfplan
 
     - name: Get Application URL
       run: |
