@@ -48,7 +48,8 @@
                 "ecr:InitiateLayerUpload",
                 "ecr:PutImage",
                 "ecr:UploadLayerPart",
-                "ecr:ListTagsForResource"
+                "ecr:ListTagsForResource",
+                "ecr:DescribeRepositories"
             ],
             "Resource": [
                 "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT_ID}:repository/${ECR_REPO_BACKEND}",
@@ -68,7 +69,32 @@
                 "ecs:DeregisterTaskDefinition",
                 "ecs:CreateService",
                 "ecs:DeleteService",
-                "ecs:ListServices"
+                "ecs:ListServices",
+                "ecs:DescribeClusters"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+                "logs:GetLogEvents"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeVpcs",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeRouteTables",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeInternetGateways"
             ],
             "Resource": "*"
         },
