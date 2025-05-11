@@ -15,3 +15,22 @@ variable "image_tag" {
   type        = string
   default     = "latest"
 }
+
+# New variables for secrets management
+variable "github_repository" {
+  description = "GitHub repository name (format: owner/repo)"
+  type        = string
+  default     = "JoodithHermmina/Hackothon"
+}
+
+variable "secret_retention_days" {
+  description = "Number of days to retain secrets after deletion"
+  type        = number
+  default     = 7
+}
+
+variable "enable_secret_rotation" {
+  description = "Enable automatic secret rotation"
+  type        = bool
+  default     = false
+}

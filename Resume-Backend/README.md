@@ -2,6 +2,16 @@
 
 This is the backend API for the Resume Builder application. It generates PDF resumes from JSON data using LaTeX.
 
+## Configuration
+
+The application uses AWS Secrets Manager for managing sensitive configuration values. The following secrets are required:
+
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+- AWS_REGION
+- APP_DOMAIN
+- AWS_ACCOUNT_ID
+
 ## Prerequisites
 
 - Python 3.7+
@@ -88,3 +98,31 @@ python -m pytest tests/test_app.py::test_home_route
 ## Coverage
 
 The tests achieve over 97% code coverage, ensuring the reliability of the backend functionality.
+
+## Development
+
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Run tests:
+```bash
+pytest tests/
+```
+
+3. Run the application:
+```bash
+python app.py
+```
+
+## Deployment
+
+The application is deployed using GitHub Actions and AWS ECS. The deployment process is automated and includes:
+
+1. Running tests
+2. Building Docker image
+3. Pushing to ECR
+4. Deploying with Terraform
+
+For more details, see the GitHub Actions workflow configuration.

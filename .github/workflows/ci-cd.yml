@@ -7,6 +7,11 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  AWS_REGION: ap-south-1
+  SECRET_NAME: resume-builder/dev/app-secrets
+  REQUIRED_SECRETS: "AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ACCOUNT_ID APP_DOMAIN"
+
 jobs:
   test:
     name: Test Applications
@@ -66,12 +71,78 @@ jobs:
     - name: Check out the repo
       uses: actions/checkout@v3
 
+    - name: Get AWS credentials from Secrets Manager
+      id: get-aws-credentials
+      run: |
+        echo "Attempting to retrieve secrets from AWS Secrets Manager..."
+        
+        # Function to validate required secrets
+        validate_secrets() {
+          local secrets_json="$1"
+          local missing_secrets=()
+          
+          for secret in ${{ env.REQUIRED_SECRETS }}; do
+            if ! echo "$secrets_json" | jq -e "has(\"$secret\")" > /dev/null; then
+              missing_secrets+=("$secret")
+            fi
+          done
+          
+          if [ ${#missing_secrets[@]} -ne 0 ]; then
+            echo "Error: Missing required secrets: ${missing_secrets[*]}"
+            exit 1
+          fi
+        }
+        
+        # Get secrets with error handling
+        if ! SECRETS=$(aws secretsmanager get-secret-value \
+          --secret-id "${{ env.SECRET_NAME }}" \
+          --region "${{ env.AWS_REGION }}" \
+          --query SecretString \
+          --output text); then
+          echo "Error: Failed to retrieve secrets from AWS Secrets Manager"
+          exit 1
+        fi
+        
+        # Validate JSON format
+        if ! echo "$SECRETS" | jq empty; then
+          echo "Error: Invalid JSON format in secrets"
+          exit 1
+        fi
+        
+        # Validate required secrets
+        validate_secrets "$SECRETS"
+        
+        # Mask sensitive values
+        echo "Masking sensitive values..."
+        echo "::add-mask::$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)"
+        echo "::add-mask::$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)"
+        echo "::add-mask::$(echo $SECRETS | jq -r .APP_DOMAIN)"
+        
+        # Export AWS credentials for subsequent steps
+        echo "Exporting credentials..."
+        echo "aws_access_key_id=$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)" >> $GITHUB_OUTPUT
+        echo "aws_secret_access_key=$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)" >> $GITHUB_OUTPUT
+        echo "aws_account_id=$(echo $SECRETS | jq -r .AWS_ACCOUNT_ID)" >> $GITHUB_OUTPUT
+        echo "app_domain=$(echo $SECRETS | jq -r .APP_DOMAIN)" >> $GITHUB_OUTPUT
+        
+        echo "Successfully retrieved and validated secrets"
+
+    - name: Verify AWS credentials
+      id: verify-credentials
+      run: |
+        echo "Verifying AWS credentials..."
+        if ! aws sts get-caller-identity &>/dev/null; then
+          echo "Error: Invalid AWS credentials"
+          exit 1
+        fi
+        echo "AWS credentials verified successfully"
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+        aws-access-key-id: ${{ steps.get-aws-credentials.outputs.aws_access_key_id }}
+        aws-secret-access-key: ${{ steps.get-aws-credentials.outputs.aws_secret_access_key }}
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
       id: login-ecr
@@ -84,7 +155,6 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         cd Resume-Backend
-        # Add production environment variables to the build
         docker build \
           --build-arg FLASK_ENV=production \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
@@ -99,9 +169,8 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         cd resume-frontend
-        # Build with production API URL
         docker build \
-          --build-arg REACT_APP_API_URL=http://${{ secrets.APP_DOMAIN }} \
+          --build-arg REACT_APP_API_URL=http://${{ steps.get-aws-credentials.outputs.app_domain }} \
           -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
         docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
@@ -122,17 +191,81 @@ jobs:
       with:
         terraform_version: 1.5.7
 
+    - name: Get AWS credentials from Secrets Manager
+      id: get-aws-credentials
+      run: |
+        echo "Attempting to retrieve secrets from AWS Secrets Manager..."
+        
+        # Function to validate required secrets
+        validate_secrets() {
+          local secrets_json="$1"
+          local missing_secrets=()
+          
+          for secret in ${{ env.REQUIRED_SECRETS }}; do
+            if ! echo "$secrets_json" | jq -e "has(\"$secret\")" > /dev/null; then
+              missing_secrets+=("$secret")
+            fi
+          done
+          
+          if [ ${#missing_secrets[@]} -ne 0 ]; then
+            echo "Error: Missing required secrets: ${missing_secrets[*]}"
+            exit 1
+          fi
+        }
+        
+        # Get secrets with error handling
+        if ! SECRETS=$(aws secretsmanager get-secret-value \
+          --secret-id "${{ env.SECRET_NAME }}" \
+          --region "${{ env.AWS_REGION }}" \
+          --query SecretString \
+          --output text); then
+          echo "Error: Failed to retrieve secrets from AWS Secrets Manager"
+          exit 1
+        fi
+        
+        # Validate JSON format
+        if ! echo "$SECRETS" | jq empty; then
+          echo "Error: Invalid JSON format in secrets"
+          exit 1
+        fi
+        
+        # Validate required secrets
+        validate_secrets "$SECRETS"
+        
+        # Mask sensitive values
+        echo "Masking sensitive values..."
+        echo "::add-mask::$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)"
+        echo "::add-mask::$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)"
+        
+        # Export AWS credentials for subsequent steps
+        echo "Exporting credentials..."
+        echo "aws_access_key_id=$(echo $SECRETS | jq -r .AWS_ACCESS_KEY_ID)" >> $GITHUB_OUTPUT
+        echo "aws_secret_access_key=$(echo $SECRETS | jq -r .AWS_SECRET_ACCESS_KEY)" >> $GITHUB_OUTPUT
+        echo "aws_account_id=$(echo $SECRETS | jq -r .AWS_ACCOUNT_ID)" >> $GITHUB_OUTPUT
+        
+        echo "Successfully retrieved and validated secrets"
+
+    - name: Verify AWS credentials
+      id: verify-credentials
+      run: |
+        echo "Verifying AWS credentials..."
+        if ! aws sts get-caller-identity &>/dev/null; then
+          echo "Error: Invalid AWS credentials"
+          exit 1
+        fi
+        echo "AWS credentials verified successfully"
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+        aws-access-key-id: ${{ steps.get-aws-credentials.outputs.aws_access_key_id }}
+        aws-secret-access-key: ${{ steps.get-aws-credentials.outputs.aws_secret_access_key }}
+        aws-region: ${{ env.AWS_REGION }}
 
     - name: Create S3 bucket for Terraform state if not exists
       run: |
         aws s3api head-bucket --bucket resume-builder-tf-state 2>/dev/null || \
-        aws s3 mb s3://resume-builder-tf-state --region ${{ secrets.AWS_REGION }}
+        aws s3 mb s3://resume-builder-tf-state --region ${{ env.AWS_REGION }}
 
     - name: Terraform Init
       run: |
@@ -142,12 +275,12 @@ jobs:
     - name: Terraform Plan
       run: |
         cd terraform
-        terraform plan -var "image_tag=${{ github.sha }}" -var "aws_region=${{ secrets.AWS_REGION }}"
+        terraform plan -var "image_tag=${{ github.sha }}" -var "aws_region=${{ env.AWS_REGION }}"
 
     - name: Terraform Apply
       run: |
         cd terraform
-        terraform apply -auto-approve -var "image_tag=${{ github.sha }}" -var "aws_region=${{ secrets.AWS_REGION }}"
+        terraform apply -auto-approve -var "image_tag=${{ github.sha }}" -var "aws_region=${{ env.AWS_REGION }}"
 
     - name: Get Application URL
       run: |
