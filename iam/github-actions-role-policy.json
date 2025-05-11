@@ -6,7 +6,8 @@
             "Action": [
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:CreateSecret",
-                "secretsmanager:TagResource"
+                "secretsmanager:TagResource",
+                "secretsmanager:DescribeSecret"
             ],
             "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:${APP_NAME}/${ENVIRONMENT}/app-secrets*"
         },
