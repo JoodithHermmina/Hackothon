@@ -351,6 +351,22 @@ jobs:
         
         echo "Using AWS Account ID: $TF_VAR_aws_account_id"
         
+        # Check for potentially tainted resources and untaint them
+        echo "Checking for potentially tainted resources..."
+        TAINTED_RESOURCES=$(terraform state list | grep -E "aws_ecs_task_definition|aws_ecs_service" || true)
+        
+        for resource in $TAINTED_RESOURCES; do
+          echo "Checking if $resource is tainted..."
+          if terraform state show $resource 2>&1 | grep -q "Tainted"; then
+            echo "Untainting resource: $resource"
+            terraform untaint $resource
+          fi
+        done
+        
+        # Refresh state to ensure it's synchronized with actual resources
+        echo "Refreshing Terraform state..."
+        terraform refresh
+        
         # Save plan to file for validation
         terraform plan \
           -var "aws_account_id=$TF_VAR_aws_account_id" \
@@ -428,8 +444,37 @@ jobs:
         TF_VAR_ecr_repositories: '["resume-backend", "resume-frontend"]'
       run: |
         cd terraform
-        # Apply the validated plan
-        terraform apply tfplan
+        
+        # First try to apply the plan
+        echo "Applying Terraform plan..."
+        if ! terraform apply tfplan; then
+          echo "Initial apply failed, checking for tainted resources..."
+          
+          # Identify potentially tainted resources
+          TAINTED_RESOURCES=$(terraform state list | grep -E "aws_ecs_task_definition|aws_ecs_service" || true)
+          
+          # Untaint any resources that might be causing issues
+          for resource in $TAINTED_RESOURCES; do
+            echo "Untainting resource: $resource"
+            terraform untaint $resource || true
+          done
+          
+          # Refresh the state
+          echo "Refreshing state after untainting..."
+          terraform refresh
+          
+          # Create a new plan
+          echo "Creating new plan after untainting..."
+          terraform plan \
+            -var "aws_account_id=$TF_VAR_aws_account_id" \
+            -var "image_tag=${{ github.sha }}" \
+            -var "aws_region=${{ env.AWS_REGION }}" \
+            -out=tfplan
+          
+          # Try apply again
+          echo "Attempting apply again after untainting..."
+          terraform apply tfplan
+        fi
 
     - name: Get Application URL
       run: |
