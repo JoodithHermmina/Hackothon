@@ -222,8 +222,8 @@ resource "aws_ecs_task_definition" "backend" {
     ignore_changes = [
       # Ignore changes to tags
       tags,
-      # Ignore changes to the revision as it's managed by AWS
-      revision
+      # Ignore changes to container definitions (including image tags)
+      container_definitions
     ]
     # This ensures Terraform creates a new resource before destroying the old one
     create_before_destroy = true
@@ -269,8 +269,8 @@ resource "aws_ecs_task_definition" "frontend" {
     ignore_changes = [
       # Ignore changes to tags
       tags,
-      # Ignore changes to the revision as it's managed by AWS
-      revision
+      # Ignore changes to container definitions (including image tags)
+      container_definitions
     ]
     # This ensures Terraform creates a new resource before destroying the old one
     create_before_destroy = true
@@ -305,6 +305,8 @@ resource "aws_ecs_service" "backend" {
       task_definition,
       desired_count
     ]
+    # This ensures Terraform creates a new resource before destroying the old one
+    create_before_destroy = true
   }
 }
 
@@ -335,6 +337,8 @@ resource "aws_ecs_service" "frontend" {
       task_definition,
       desired_count
     ]
+    # This ensures Terraform creates a new resource before destroying the old one
+    create_before_destroy = true
   }
 }
 

@@ -25,6 +25,15 @@ resource "aws_secretsmanager_secret_version" "app_secrets_version" {
     APP_DOMAIN            = "placeholder"
     AWS_ACCOUNT_ID        = var.aws_account_id
   })
+  
+  lifecycle {
+    # This prevents Terraform from trying to update the secret value every time
+    ignore_changes = [
+      secret_string
+    ]
+    # This ensures Terraform creates a new resource before destroying the old one
+    create_before_destroy = true
+  }
 }
 
 # Output the secret ARN for reference
