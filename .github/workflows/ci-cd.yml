@@ -1,5 +1,6 @@
 name: CI/CD Pipeline
 
+# Testing AWS Secrets Manager Integration
 on:
   push:
     branches: [ main ]
