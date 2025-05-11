@@ -3,7 +3,7 @@ name: CI/CD Pipeline
 # Testing AWS Secrets Manager Integration with OIDC Authentication
 # OIDC Provider: token.actions.githubusercontent.com
 # IAM Role: github-actions-oidc-role
-# Trigger: Testing deployment with updated IAM role policy permissions
+# Trigger: Testing deployment with updated permissions for Secrets Manager
 # Last updated: $(date '+%Y-%m-%d %H:%M:%S')
 on:
   push:
