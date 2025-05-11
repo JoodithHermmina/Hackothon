@@ -7,7 +7,7 @@ terraform {
   backend "s3" {
     bucket = "resume-builder-tf-state"
     key    = "terraform.tfstate"
-    region = "us-east-1"  # Bucket is in us-east-1
+    region = "us-east-1" # Bucket is in us-east-1
   }
 }
 
@@ -22,7 +22,7 @@ data "aws_ecr_repository" "resume_frontend" {
 
 # VPC Configuration
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "5.0.0"
 
   name = "resume-builder-vpc"

@@ -38,7 +38,7 @@ variable "enable_secret_rotation" {
 variable "aws_account_id" {
   description = "AWS Account ID for resource creation - must be provided via environment variable TF_VAR_aws_account_id"
   type        = string
-  sensitive   = true  # Marks this variable as sensitive in logs and outputs
+  sensitive   = true # Marks this variable as sensitive in logs and outputs
 }
 
 variable "tf_state_bucket" {

@@ -2,7 +2,7 @@
 resource "aws_secretsmanager_secret" "app_secrets" {
   name        = "resume-builder/${var.environment}/app-secrets"
   description = "Application secrets for Resume Builder"
-  
+
   tags = {
     Environment = var.environment
     Application = "resume-builder"
@@ -16,9 +16,9 @@ resource "aws_secretsmanager_secret_version" "app_secrets_version" {
   secret_string = jsonencode({
     AWS_ACCESS_KEY_ID     = "placeholder"
     AWS_SECRET_ACCESS_KEY = "placeholder"
-    AWS_REGION           = var.aws_region
-    APP_DOMAIN           = "placeholder"
-    AWS_ACCOUNT_ID       = var.aws_account_id
+    AWS_REGION            = var.aws_region
+    APP_DOMAIN            = "placeholder"
+    AWS_ACCOUNT_ID        = var.aws_account_id
   })
 }
 
