@@ -328,6 +328,84 @@ jobs:
       run: |
         cd terraform
         terraform init
+        
+    - name: Verify and Sync Task Definition Versions
+      env:
+        TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
+        TF_VAR_app_name: ${{ env.APP_NAME }}
+      run: |
+        cd terraform
+        
+        echo "Verifying ECS task definition versions..."
+        
+        # Get actual task definitions used by services from AWS
+        echo "Checking task definitions used by AWS services..."
+        
+        # Backend service
+        BACKEND_SERVICE_TASK_DEF=$(aws ecs describe-services \
+          --cluster resume-builder-cluster \
+          --services resume-backend-service \
+          --query 'services[0].taskDefinition' \
+          --output text)
+          
+        echo "Backend service is using task definition: $BACKEND_SERVICE_TASK_DEF"
+        
+        # Frontend service
+        FRONTEND_SERVICE_TASK_DEF=$(aws ecs describe-services \
+          --cluster resume-builder-cluster \
+          --services resume-frontend-service \
+          --query 'services[0].taskDefinition' \
+          --output text)
+          
+        echo "Frontend service is using task definition: $FRONTEND_SERVICE_TASK_DEF"
+        
+        # Get task definitions from Terraform state
+        echo "Checking task definitions in Terraform state..."
+        
+        # Extract task definition from Terraform state (if it exists)
+        if terraform state list | grep -q "aws_ecs_task_definition.backend"; then
+          BACKEND_TF_TASK_DEF=$(terraform state show aws_ecs_task_definition.backend | grep "arn =" | head -1 | sed 's/.*= "\(.*\)".*/\1/')
+          echo "Terraform backend task definition: $BACKEND_TF_TASK_DEF"
+          
+          # Check if they match
+          if [[ "$BACKEND_SERVICE_TASK_DEF" != "$BACKEND_TF_TASK_DEF" ]]; then
+            echo "Mismatch detected in backend task definition!"
+            echo "Service is using: $BACKEND_SERVICE_TASK_DEF"
+            echo "Terraform state has: $BACKEND_TF_TASK_DEF"
+            
+            # Remove from state and reimport correct version
+            echo "Syncing backend task definition..."
+            terraform state rm aws_ecs_task_definition.backend
+            terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF"
+          fi
+        else
+          echo "Backend task definition not found in Terraform state, importing..."
+          terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF"
+        fi
+        
+        # Do the same for frontend
+        if terraform state list | grep -q "aws_ecs_task_definition.frontend"; then
+          FRONTEND_TF_TASK_DEF=$(terraform state show aws_ecs_task_definition.frontend | grep "arn =" | head -1 | sed 's/.*= "\(.*\)".*/\1/')
+          echo "Terraform frontend task definition: $FRONTEND_TF_TASK_DEF"
+          
+          # Check if they match
+          if [[ "$FRONTEND_SERVICE_TASK_DEF" != "$FRONTEND_TF_TASK_DEF" ]]; then
+            echo "Mismatch detected in frontend task definition!"
+            echo "Service is using: $FRONTEND_SERVICE_TASK_DEF"
+            echo "Terraform state has: $FRONTEND_TF_TASK_DEF"
+            
+            # Remove from state and reimport correct version
+            echo "Syncing frontend task definition..."
+            terraform state rm aws_ecs_task_definition.frontend
+            terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF"
+          fi
+        else
+          echo "Frontend task definition not found in Terraform state, importing..."
+          terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF"
+        fi
+        
+        echo "Task definition version verification and sync completed."
 
     - name: Terraform Plan
       env:
