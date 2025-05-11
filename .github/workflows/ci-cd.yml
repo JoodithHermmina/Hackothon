@@ -26,6 +26,8 @@ env:
   APP_NAME: ${{ secrets.APP_NAME || 'resume-builder' }}
   ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'dev' }}
   ALLOW_RESOURCE_DELETION: ${{ secrets.ALLOW_RESOURCE_DELETION || 'false' }}
+  # Initial AWS Account ID for OIDC authentication
+  INITIAL_AWS_ACCOUNT_ID: "565393046834"
 
 jobs:
   # test:
@@ -89,7 +91,7 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::${{ steps.get-aws-credentials.outputs.aws_account_id }}:role/${{ env.IAM_ROLE }}
+        role-to-assume: arn:aws:iam::${{ env.INITIAL_AWS_ACCOUNT_ID }}:role/${{ env.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
         audience: sts.amazonaws.com
 
@@ -214,7 +216,7 @@ jobs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: arn:aws:iam::${{ steps.get-aws-credentials.outputs.aws_account_id }}:role/${{ env.IAM_ROLE }}
+        role-to-assume: arn:aws:iam::${{ env.INITIAL_AWS_ACCOUNT_ID }}:role/${{ env.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
         audience: sts.amazonaws.com
 
