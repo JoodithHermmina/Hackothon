@@ -7,7 +7,13 @@
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:CreateSecret",
                 "secretsmanager:TagResource",
-                "secretsmanager:DescribeSecret"
+                "secretsmanager:DescribeSecret",
+                "secretsmanager:GetResourcePolicy",
+                "secretsmanager:PutResourcePolicy",
+                "secretsmanager:DeleteResourcePolicy",
+                "secretsmanager:UpdateSecret",
+                "secretsmanager:PutSecretValue",
+                "secretsmanager:ListSecretVersionIds"
             ],
             "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT_ID}:secret:${APP_NAME}/${ENVIRONMENT}/app-secrets*"
         },
