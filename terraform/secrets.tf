@@ -1,5 +1,6 @@
 # AWS Secrets Manager configuration
 resource "aws_secretsmanager_secret" "app_secrets" {
+  count       = var.create_new_secret ? 1 : 0
   name        = "resume-builder/${var.environment}/app-secrets"
   description = "Application secrets for Resume Builder"
 
@@ -22,9 +23,14 @@ resource "aws_secretsmanager_secret" "app_secrets" {
   }
 }
 
+# Data source to look up the secret when not creating it
+data "aws_secretsmanager_secret" "existing_secret" {
+  name = "resume-builder/${var.environment}/app-secrets"
+}
+
 # Initial secret version with placeholder values
 resource "aws_secretsmanager_secret_version" "app_secrets_version" {
-  secret_id = aws_secretsmanager_secret.app_secrets.id
+  secret_id = var.create_new_secret ? aws_secretsmanager_secret.app_secrets[0].id : data.aws_secretsmanager_secret.existing_secret.id
   secret_string = jsonencode({
     AWS_ACCESS_KEY_ID     = "placeholder"
     AWS_SECRET_ACCESS_KEY = "placeholder"
@@ -45,6 +51,6 @@ resource "aws_secretsmanager_secret_version" "app_secrets_version" {
 
 # Output the secret ARN for reference
 output "secrets_manager_arn" {
-  value       = aws_secretsmanager_secret.app_secrets.arn
+  value       = var.create_new_secret ? aws_secretsmanager_secret.app_secrets[0].arn : data.aws_secretsmanager_secret.existing_secret.arn
   description = "ARN of the Secrets Manager secret"
 } 

@@ -70,3 +70,9 @@ variable "iam_role_prefix" {
   type        = string
   default     = "github-actions-oidc-role"
 }
+
+variable "create_new_secret" {
+  description = "Whether to create a new secret or use existing one"
+  type        = bool
+  default     = false
+}

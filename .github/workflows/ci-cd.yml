@@ -587,8 +587,13 @@ jobs:
           
           # Untaint any resources that might be causing issues
           for resource in $TAINTED_RESOURCES; do
-            echo "Untainting resource: $resource"
-            terraform untaint $resource || true
+            echo "Checking if $resource is tainted..."
+            if terraform state show $resource | grep -q "Tainted"; then
+              echo "Untainting resource: $resource"
+              terraform untaint $resource || true
+            else
+              echo "Resource $resource is not tainted, skipping."
+            fi
           done
           
           # Refresh the state
