@@ -84,6 +84,7 @@ jobs:
       with:
         role-to-assume: arn:aws:iam::565393046834:role/github-actions-oidc-role
         aws-region: ${{ env.AWS_REGION }}
+        audience: sts.amazonaws.com
 
     - name: Get AWS credentials from Secrets Manager
       id: get-aws-credentials
