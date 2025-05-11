@@ -94,6 +94,7 @@ jobs:
         role-to-assume: arn:aws:iam::${{ env.INITIAL_AWS_ACCOUNT_ID }}:role/${{ env.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
         audience: sts.amazonaws.com
+        role-session-name: GitHubActionsOIDCSession
 
     - name: Get AWS credentials from Secrets Manager
       id: get-aws-credentials
@@ -219,6 +220,7 @@ jobs:
         role-to-assume: arn:aws:iam::${{ env.INITIAL_AWS_ACCOUNT_ID }}:role/${{ env.IAM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
         audience: sts.amazonaws.com
+        role-session-name: GitHubActionsOIDCSession
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
