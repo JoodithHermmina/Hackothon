@@ -11,7 +11,26 @@
         {
             "Effect": "Allow",
             "Action": [
-                "ecr:GetAuthorizationToken",
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::resume-builder-tf-state",
+                "arn:aws:s3:::resume-builder-tf-state/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
                 "ecr:BatchCheckLayerAvailability",
                 "ecr:GetDownloadUrlForLayer",
                 "ecr:GetRepositoryPolicy",
@@ -22,9 +41,87 @@
                 "ecr:InitiateLayerUpload",
                 "ecr:UploadLayerPart",
                 "ecr:CompleteLayerUpload",
-                "ecr:PutImage"
+                "ecr:PutImage",
+                "ecr:ListTagsForResource",
+                "ecr:BatchGetRepositoryPolicy",
+                "ecr:GetLifecyclePolicy",
+                "ecr:GetRepositoryPolicy",
+                "ecr:CreateRepository",
+                "ecr:DeleteRepository",
+                "ecr:TagResource",
+                "ecr:UntagResource"
+            ],
+            "Resource": [
+                "arn:aws:ecr:ap-south-1:565393046834:repository/resume-backend",
+                "arn:aws:ecr:ap-south-1:565393046834:repository/resume-frontend"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:*",
+                "elasticloadbalancing:*",
+                "route53:*",
+                "autoscaling:*",
+                "cloudwatch:*",
+                "logs:*",
+                "vpc:*",
+                "subnet:*",
+                "route-table:*",
+                "internet-gateway:*",
+                "nat-gateway:*"
             ],
             "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ecs:*",
+                "ecs:DescribeClusters",
+                "ecs:ListClusters",
+                "ecs:CreateCluster",
+                "ecs:DeleteCluster",
+                "ecs:UpdateCluster",
+                "ecs:ListServices",
+                "ecs:DescribeServices",
+                "ecs:UpdateService",
+                "ecs:DeleteService",
+                "ecs:CreateService",
+                "ecs:ListTaskDefinitions",
+                "ecs:DescribeTaskDefinition",
+                "ecs:RegisterTaskDefinition",
+                "ecs:DeregisterTaskDefinition",
+                "application-autoscaling:*"
+            ],
+            "Resource": [
+                "arn:aws:ecs:ap-south-1:565393046834:cluster/*",
+                "arn:aws:ecs:ap-south-1:565393046834:service/*",
+                "arn:aws:ecs:ap-south-1:565393046834:task-definition/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "iam:CreateRole",
+                "iam:DeleteRole",
+                "iam:GetRole",
+                "iam:PutRolePolicy",
+                "iam:DeleteRolePolicy",
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:PassRole",
+                "iam:ListRolePolicies",
+                "iam:ListAttachedRolePolicies",
+                "iam:GetRolePolicy",
+                "iam:CreateServiceLinkedRole",
+                "iam:DeleteServiceLinkedRole",
+                "iam:GetServiceLinkedRoleDeletionStatus"
+            ],
+            "Resource": [
+                "arn:aws:iam::565393046834:role/resume-builder*",
+                "arn:aws:iam::565393046834:role/aws-service-role/*",
+                "arn:aws:iam::565393046834:role/service-role/*"
+            ]
         }
     ]
 } 
