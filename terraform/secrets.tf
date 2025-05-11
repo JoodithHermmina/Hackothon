@@ -8,6 +8,11 @@ resource "aws_secretsmanager_secret" "app_secrets" {
     Application = "resume-builder"
     ManagedBy   = "terraform"
   }
+  
+  lifecycle {
+    # This prevents failures when Terraform can't read the secret during initial creation
+    create_before_destroy = true
+  }
 }
 
 # Initial secret version with placeholder values

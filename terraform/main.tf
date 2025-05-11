@@ -216,6 +216,18 @@ resource "aws_ecs_task_definition" "backend" {
       }
     }
   ])
+  
+  lifecycle {
+    # This prevents Terraform from trying to read the task definition before creating it
+    ignore_changes = [
+      # Ignore changes to tags
+      tags,
+      # Ignore changes to the revision as it's managed by AWS
+      revision
+    ]
+    # This ensures Terraform creates a new resource before destroying the old one
+    create_before_destroy = true
+  }
 }
 
 resource "aws_ecs_task_definition" "frontend" {
@@ -251,6 +263,18 @@ resource "aws_ecs_task_definition" "frontend" {
       }
     }
   ])
+  
+  lifecycle {
+    # This prevents Terraform from trying to read the task definition before creating it
+    ignore_changes = [
+      # Ignore changes to tags
+      tags,
+      # Ignore changes to the revision as it's managed by AWS
+      revision
+    ]
+    # This ensures Terraform creates a new resource before destroying the old one
+    create_before_destroy = true
+  }
 }
 
 # ECS Services
@@ -274,6 +298,14 @@ resource "aws_ecs_service" "backend" {
   }
 
   depends_on = [aws_lb_listener.frontend]
+  
+  lifecycle {
+    # Ignore changes to task definition as it changes with each deployment
+    ignore_changes = [
+      task_definition,
+      desired_count
+    ]
+  }
 }
 
 resource "aws_ecs_service" "frontend" {
@@ -296,6 +328,14 @@ resource "aws_ecs_service" "frontend" {
   }
 
   depends_on = [aws_lb_listener.frontend]
+  
+  lifecycle {
+    # Ignore changes to task definition as it changes with each deployment
+    ignore_changes = [
+      task_definition,
+      desired_count
+    ]
+  }
 }
 
 # IAM Roles
