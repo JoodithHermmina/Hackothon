@@ -30,58 +30,58 @@ env:
   INITIAL_AWS_ACCOUNT_ID: "565393046834"
 
 jobs:
-  # test:
-  #   name: Test Applications
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #   - name: Check out the repo
-  #     uses: actions/checkout@v3
+  test:
+    name: Test Applications
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v3
 
-  #   - name: Set up Python for backend tests
-  #     uses: actions/setup-python@v4
-  #     with:
-  #       python-version: '3.10'
+    - name: Set up Python for backend tests
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-  #   - name: Install LaTeX dependencies
-  #     run: |
-  #       sudo apt-get update
-  #       sudo apt-get install -y texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
+    - name: Install LaTeX dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra
 
-  #   - name: Install backend dependencies
-  #     run: |
-  #       cd Resume-Backend
-  #       python -m pip install --upgrade pip
-  #       pip install -r requirements.txt
-  #       pip install pytest pytest-cov
+    - name: Install backend dependencies
+      run: |
+        cd Resume-Backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
 
-  #   - name: Run backend tests
-  #     run: |
-  #       cd Resume-Backend
-  #       # Create necessary directories for tests
-  #       mkdir -p templates static
-  #       cp templates/twks_resume_template.tex templates/ || true
-  #       cp company_logo.png templates/ || true
-  #       pytest tests/ --cov=.
+    - name: Run backend tests
+      run: |
+        cd Resume-Backend
+        # Create necessary directories for tests
+        mkdir -p templates static
+        cp templates/twks_resume_template.tex templates/ || true
+        cp company_logo.png templates/ || true
+        pytest tests/ --cov=.
 
-  #   - name: Set up Node.js for frontend tests
-  #     uses: actions/setup-node@v3
-  #     with:
-  #       node-version: '18'
+    - name: Set up Node.js for frontend tests
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
 
-  #   - name: Install frontend dependencies
-  #     run: |
-  #       cd resume-frontend
-  #       npm install --legacy-peer-deps
+    - name: Install frontend dependencies
+      run: |
+        cd resume-frontend
+        npm install --legacy-peer-deps
 
-  #   - name: Run frontend tests
-  #     run: |
-  #       cd resume-frontend
-  #       CI=true npm test -- --passWithNoTests
+    - name: Run frontend tests
+      run: |
+        cd resume-frontend
+        CI=true npm test -- --passWithNoTests
 
   build_and_push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-    # needs: test  # Comment out the dependency on test job
+    needs: test  # Uncomment the dependency on test job
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
