@@ -20,7 +20,7 @@ variable "image_tag" {
 variable "github_repository" {
   description = "GitHub repository name (format: owner/repo)"
   type        = string
-  default     = "JoodithHermmina/Hackothon"
+  default     = "twlabs/AIFSD-Thoughtworks-ResumeBuilder"
 }
 
 variable "secret_retention_days" {

@@ -10,7 +10,7 @@
             "Condition": {
                 "StringEquals": {
                     "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-                    "token.actions.githubusercontent.com:sub": "repo:JoodithHermmina/Hackothon:ref:refs/heads/main"
+                    "token.actions.githubusercontent.com:sub": "repo:twlabs/AIFSD-Thoughtworks-ResumeBuilder:ref:refs/heads/main"
                 }
             }
         }
