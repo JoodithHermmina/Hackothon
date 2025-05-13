@@ -1,7 +1,8 @@
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import React, { ReactNode } from 'react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TourProvider, useTour } from '../../contexts/TourContext';
+import { TourProvider } from '../../contexts/TourContext';
+import { Step } from 'react-joyride';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -24,42 +25,58 @@ const localStorageMock = (() => {
 
 Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
-// Create a mock implementation for the actual TourContext component
-jest.mock('../../contexts/TourContext', () => {
-  // Store the original module to keep types and other exports
-  const originalModule = jest.requireActual('../../contexts/TourContext');
+// Mock variables for the tour context
+let mockIsActive = false;
+let mockIsFirstVisit = false;
+let mockRun = false;
+let mockStepIndex = 0;
+let mockTourCompleted = false;
+let mockSteps: Step[] = [];
 
-  // Create simplified mock implementation
-  return {
-    ...originalModule,
-    TourProvider: ({ children }: { children: React.ReactNode }) => {
-      // Return children directly without using hooks
-      return <>{children}</>;
+// Mock functions for the tour context
+const mockStartTour = jest.fn();
+const mockStopTour = jest.fn();
+const mockResetTour = jest.fn();
+const mockMarkTourCompleted = jest.fn();
+const mockGoToStep = jest.fn();
+const mockNextStep = jest.fn();
+const mockPrevStep = jest.fn();
+const mockSetTourSteps = jest.fn();
+
+// Mock the useTour hook
+jest.mock('../../contexts/TourContext', () => {
+  const mockUseTour = () => ({
+    tourState: {
+      isActive: mockIsActive,
+      isFirstVisit: mockIsFirstVisit,
+      steps: mockSteps,
+      run: mockRun,
+      stepIndex: mockStepIndex,
+      tourCompleted: mockTourCompleted
     },
-    useTour: jest.fn(() => ({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(() => {}),
-      stopTour: jest.fn(() => {}),
-      goToStep: jest.fn(() => {}),
-      nextStep: jest.fn(() => {}),
-      prevStep: jest.fn(() => {}),
-      resetTour: jest.fn(() => {}),
-      setTourSteps: jest.fn(() => {}),
-      markTourCompleted: jest.fn(() => {})
-    }))
+    startTour: mockStartTour,
+    stopTour: mockStopTour,
+    resetTour: mockResetTour,
+    markTourCompleted: mockMarkTourCompleted,
+    goToStep: mockGoToStep,
+    nextStep: mockNextStep,
+    prevStep: mockPrevStep,
+    setTourSteps: mockSetTourSteps
+  });
+
+  return {
+    __esModule: true,
+    TourProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+    useTour: mockUseTour,
+    default: {
+      Provider: ({ children }: { children: ReactNode }) => <>{children}</>
+    }
   };
 });
 
 // Test component that uses the tour context
 const TestComponent: React.FC = () => {
-  const { tourState, startTour, stopTour, resetTour } = useTour();
+  const { tourState, startTour, stopTour, resetTour } = require('../../contexts/TourContext').useTour();
   
   return (
     <div>
@@ -77,14 +94,17 @@ const TestComponent: React.FC = () => {
 describe('TourContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset mock values to defaults
+    mockIsActive = false;
+    mockIsFirstVisit = false;
+    mockRun = false;
+    mockStepIndex = 0;
+    mockTourCompleted = false;
+    mockSteps = [];
   });
 
   it('initializes with default values', () => {
-    render(
-      <TourProvider>
-        <TestComponent />
-      </TourProvider>
-    );
+    render(<TestComponent />);
 
     expect(screen.getByTestId('tour-active').textContent).toBe('false');
     expect(screen.getByTestId('tour-run').textContent).toBe('false');
@@ -92,139 +112,46 @@ describe('TourContext', () => {
   });
 
   it('sets isFirstVisit to true for first-time visitors', async () => {
-    // Mock useTour to return isFirstVisit as true
-    (useTour as jest.Mock).mockReturnValueOnce({
-      tourState: {
-        isActive: false,
-        isFirstVisit: true,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn(),
-      goToStep: jest.fn(),
-      nextStep: jest.fn(),
-      prevStep: jest.fn(),
-      setTourSteps: jest.fn()
-    });
+    // Update mock for this test
+    mockIsFirstVisit = true;
 
-    render(
-      <TourProvider>
-        <TestComponent />
-      </TourProvider>
-    );
+    render(<TestComponent />);
 
     expect(screen.getByTestId('tour-first-visit').textContent).toBe('true');
-    // In our mocked implementation, we don't actually call localStorage.setItem
   });
 
   it('starts the tour when startTour is called', () => {
-    const startTourMock = jest.fn();
-    
-    // Mock useTour to provide the startTourMock
-    (useTour as jest.Mock).mockReturnValueOnce({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: startTourMock,
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn(),
-      goToStep: jest.fn(),
-      nextStep: jest.fn(),
-      prevStep: jest.fn(),
-      setTourSteps: jest.fn()
-    });
-
-    render(
-      <TourProvider>
-        <TestComponent />
-      </TourProvider>
-    );
+    render(<TestComponent />);
 
     const startButton = screen.getByTestId('start-tour');
     userEvent.click(startButton);
 
-    expect(startTourMock).toHaveBeenCalled();
+    expect(mockStartTour).toHaveBeenCalled();
   });
 
   it('stops the tour when stopTour is called', () => {
-    const stopTourMock = jest.fn();
-    
-    // Mock useTour to provide the stopTourMock
-    (useTour as jest.Mock).mockReturnValueOnce({
-      tourState: {
-        isActive: true,
-        isFirstVisit: false,
-        steps: [],
-        run: true,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(),
-      stopTour: stopTourMock,
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn(),
-      goToStep: jest.fn(),
-      nextStep: jest.fn(),
-      prevStep: jest.fn(),
-      setTourSteps: jest.fn()
-    });
+    // Update mock for this test
+    mockIsActive = true;
+    mockRun = true;
 
-    render(
-      <TourProvider>
-        <TestComponent />
-      </TourProvider>
-    );
+    render(<TestComponent />);
 
     const stopButton = screen.getByTestId('stop-tour');
     userEvent.click(stopButton);
 
-    expect(stopTourMock).toHaveBeenCalled();
+    expect(mockStopTour).toHaveBeenCalled();
   });
 
   it('resets the tour when resetTour is called', () => {
-    const resetTourMock = jest.fn();
-    
-    // Mock useTour to return tourCompleted as true and provide resetTourMock
-    (useTour as jest.Mock).mockReturnValueOnce({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: true
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: resetTourMock,
-      markTourCompleted: jest.fn(),
-      goToStep: jest.fn(),
-      nextStep: jest.fn(),
-      prevStep: jest.fn(),
-      setTourSteps: jest.fn()
-    });
+    // Update mock for this test
+    mockTourCompleted = true;
 
-    render(
-      <TourProvider>
-        <TestComponent />
-      </TourProvider>
-    );
+    render(<TestComponent />);
 
     const resetButton = screen.getByTestId('reset-tour');
     userEvent.click(resetButton);
 
-    expect(resetTourMock).toHaveBeenCalled();
+    expect(mockResetTour).toHaveBeenCalled();
     expect(screen.getByTestId('tour-completed').textContent).toBe('true');
   });
 }); 

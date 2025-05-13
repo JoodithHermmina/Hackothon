@@ -1,70 +1,63 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TourProvider } from '../../../contexts/TourContext';
 import TourControls from '../../../components/tour/TourControls';
 
-// Mock the tour context values
-jest.mock('../../../contexts/TourContext', () => {
-  const originalModule = jest.requireActual('../../../contexts/TourContext');
-  
-  return {
-    ...originalModule,
-    useTour: jest.fn(() => ({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn()
-    }))
-  };
-});
+// A simple mock for the tour context
+const mockStartTour = jest.fn();
+const mockStopTour = jest.fn();
+const mockResetTour = jest.fn();
+const mockMarkTourCompleted = jest.fn();
+
+let mockIsActive = false;
+let mockIsFirstVisit = false;
+let mockTourCompleted = false;
+let mockRun = false;
+
+// Mock the tour context hook
+jest.mock('../../../contexts/TourContext', () => ({
+  useTour: () => ({
+    tourState: {
+      isActive: mockIsActive,
+      isFirstVisit: mockIsFirstVisit,
+      steps: [],
+      run: mockRun,
+      stepIndex: 0,
+      tourCompleted: mockTourCompleted
+    },
+    startTour: mockStartTour,
+    stopTour: mockStopTour,
+    resetTour: mockResetTour,
+    markTourCompleted: mockMarkTourCompleted,
+    goToStep: jest.fn(),
+    nextStep: jest.fn(),
+    prevStep: jest.fn(),
+    setTourSteps: jest.fn()
+  })
+}));
 
 describe('TourControls', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset mock values
+    mockIsActive = false;
+    mockIsFirstVisit = false;
+    mockTourCompleted = false;
+    mockRun = false;
   });
 
   it('renders the help button', () => {
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    render(<TourControls />);
 
     expect(screen.getByTestId('HelpOutlineIcon')).toBeInTheDocument();
     expect(document.querySelector('.help-btn')).toBeInTheDocument();
   });
 
   it('shows dot badge for first-time visitors', () => {
-    const { useTour } = require('../../../contexts/TourContext');
-    useTour.mockReturnValueOnce({
-      tourState: {
-        isActive: false,
-        isFirstVisit: true,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn()
-    });
+    // Update mock state for this test
+    mockIsFirstVisit = true;
 
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    render(<TourControls />);
 
     // Check if badge is visible (specific implementation depends on MUI)
     const badge = document.querySelector('.MuiBadge-badge');
@@ -72,11 +65,7 @@ describe('TourControls', () => {
   });
 
   it('opens the menu when help button is clicked', async () => {
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    render(<TourControls />);
 
     // Click the help button
     const helpButton = document.querySelector('.help-btn');
@@ -89,28 +78,7 @@ describe('TourControls', () => {
   });
 
   it('calls startTour when Start Tour is clicked', async () => {
-    const { useTour } = require('../../../contexts/TourContext');
-    const startTourMock = jest.fn();
-    useTour.mockReturnValue({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: startTourMock,
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn()
-    });
-
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    render(<TourControls />);
 
     // Open the menu
     const helpButton = document.querySelector('.help-btn');
@@ -120,31 +88,15 @@ describe('TourControls', () => {
     const startTourButton = await screen.findByText('Start Tour');
     userEvent.click(startTourButton);
 
-    expect(startTourMock).toHaveBeenCalled();
+    expect(mockStartTour).toHaveBeenCalled();
   });
 
   it('shows Pause Tour option when tour is active', async () => {
-    const { useTour } = require('../../../contexts/TourContext');
-    useTour.mockReturnValue({
-      tourState: {
-        isActive: true,
-        isFirstVisit: false,
-        steps: [],
-        run: true,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn()
-    });
+    // Update mock state for this test
+    mockIsActive = true;
+    mockRun = true;
 
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    render(<TourControls />);
 
     // Open the menu
     const helpButton = document.querySelector('.help-btn');
@@ -157,27 +109,8 @@ describe('TourControls', () => {
   });
 
   it('shows Skip Tour option when tour is not completed', async () => {
-    const { useTour } = require('../../../contexts/TourContext');
-    useTour.mockReturnValue({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: false
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn()
-    });
-
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    // Default mock state has tourCompleted = false
+    render(<TourControls />);
 
     // Open the menu
     const helpButton = document.querySelector('.help-btn');
@@ -190,27 +123,10 @@ describe('TourControls', () => {
   });
 
   it('shows Tour Completed when tour is completed', async () => {
-    const { useTour } = require('../../../contexts/TourContext');
-    useTour.mockReturnValue({
-      tourState: {
-        isActive: false,
-        isFirstVisit: false,
-        steps: [],
-        run: false,
-        stepIndex: 0,
-        tourCompleted: true
-      },
-      startTour: jest.fn(),
-      stopTour: jest.fn(),
-      resetTour: jest.fn(),
-      markTourCompleted: jest.fn()
-    });
+    // Update mock state for this test
+    mockTourCompleted = true;
 
-    render(
-      <TourProvider>
-        <TourControls />
-      </TourProvider>
-    );
+    render(<TourControls />);
 
     // Open the menu
     const helpButton = document.querySelector('.help-btn');
