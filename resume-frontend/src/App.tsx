@@ -16,10 +16,9 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
-import IconButton from '@mui/material/IconButton';
-import Tooltip from '@mui/material/Tooltip';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import Joyride, { STATUS, CallBackProps } from 'react-joyride';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Paper from '@mui/material/Paper';
 
 // Import components
 import PersonalInfoForm from './components/PersonalInfoForm';
@@ -27,6 +26,11 @@ import ThoughtworksExperienceForm from './components/ThoughtworksExperienceForm'
 import OtherExperienceForm from './components/OtherExperienceForm';
 import SkillsForm from './components/SkillsForm';
 import ReviewForm from './components/ReviewForm';
+
+// Import tour components
+import { TourControls, TourManager, TourWelcomeDialog } from './components/tour';
+import { TourProvider } from './contexts/TourContext';
+import { defaultTourSteps } from './utils/tour/tourConfig';
 
 // Import types
 import { ResumeFormData, defaultFormData } from './types/resume';
@@ -104,7 +108,7 @@ const getStepContent = (
   }
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [activeStep, setActiveStep] = useState<number>(0);
   const [formData, setFormData] = useState<ResumeFormData>(defaultFormData);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -113,71 +117,16 @@ const App: React.FC = () => {
   const [pdfBlob, setPdfBlob] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState<boolean>(false);
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false);
-  const [runTour, setRunTour] = useState<boolean>(false);
-  const [isFirstVisit, setIsFirstVisit] = useState<boolean>(true);
-  const [skipTourOpen, setSkipTourOpen] = useState<boolean>(false);
-
-  // Tour steps
-  const tourSteps = [
-    {
-      target: '.app-title',
-      content:
-        'Welcome to the ThoughtWorks Resume Builder! This tool will help you create a professional resume in ThoughtWorks format.',
-      disableBeacon: true,
-    },
-    {
-      target: '.sample-data-btn',
-      content:
-        'Click here to load sample data that will help you understand what information to include in each field.',
-    },
-    {
-      target: '.stepper-container',
-      content:
-        'The form is divided into steps. Fill out each section and use the Next and Back buttons to navigate.',
-    },
-    {
-      target: '.form-container',
-      content:
-        'Enter your information in each form section. All fields have helpful placeholders to guide you.',
-    },
-    {
-      target: '.navigation-btns',
-      content: 'Use these buttons to navigate between form sections.',
-    },
-    {
-      target: '.help-btn',
-      content: 'Click here anytime to restart this tour.',
-    },
-  ];
+  const [showWelcomeDialog, setShowWelcomeDialog] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if this is the first visit
     const visited = localStorage.getItem('visitedBefore');
     if (!visited) {
       // First time visitor
-      setIsFirstVisit(true);
-      setSkipTourOpen(true);
-      localStorage.setItem('visitedBefore', 'true');
-    } else {
-      setIsFirstVisit(false);
+      setShowWelcomeDialog(true);
     }
   }, []);
-
-  const handleJoyrideCallback = (data: CallBackProps) => {
-    const { status } = data;
-    if (status === 'finished' || status === 'skipped') {
-      setRunTour(false);
-    }
-  };
-
-  const startTour = () => {
-    setRunTour(true);
-    setSkipTourOpen(false);
-  };
-
-  const skipTour = () => {
-    setSkipTourOpen(false);
-  };
 
   const handleNext = () => {
     setActiveStep(prevActiveStep => prevActiveStep + 1);
@@ -199,75 +148,41 @@ const App: React.FC = () => {
     try {
       const response = await axios.get(`${API_URL}/api/sample-data`);
       setFormData(response.data);
-      // Show information dialog
-      setConfirmOpen(true);
     } catch (err) {
       console.error('Error loading sample data:', err);
-      setError('Failed to load sample data. Please ensure the backend server is running.');
+      setError('Failed to load sample data. Please try again.');
     }
   };
 
   const handlePreview = async () => {
-    setIsSubmitting(true);
-    setError('');
-
     try {
-      console.log('Generating preview with form data:', formData);
+      setIsSubmitting(true);
+      setError('');
+
       const response = await axios.post(`${API_URL}/api/generate-pdf`, formData, {
-        responseType: 'blob', // Important: set the response type to blob
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000, // 30 seconds timeout
+        responseType: 'blob',
       });
 
-      console.log('Response received:', response.status);
-
-      // Create a blob URL for the PDF
-      const pdfBlobUrl = window.URL.createObjectURL(
-        new Blob([response.data], { type: 'application/pdf' })
-      );
-      setPdfBlob(pdfBlobUrl);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      setPdfBlob(blobUrl);
       setPreviewOpen(true);
-    } catch (err: any) {
-      console.error('Error details:', err);
-
-      // Check for specific error types
-      if (err.code === 'ECONNREFUSED') {
-        setError(
-          'Could not connect to the backend server. Please ensure it is running at http://localhost:5001'
-        );
-      } else if (err.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        setError(
-          `Server error: ${err.response.status} - ${err.response.data?.error || 'Unknown error'}`
-        );
-      } else if (err.request) {
-        // The request was made but no response was received
-        setError('No response received from server. Please check if the backend is running.');
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        setError(`Error: ${err.message}`);
-      }
-    } finally {
+      setIsSubmitting(false);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      setError('Failed to generate PDF. Please check your data and try again.');
       setIsSubmitting(false);
     }
   };
 
   const handleSubmit = async () => {
-    // First preview the resume
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    setConfirmOpen(false);
     await handlePreview();
-
-    // If preview was successful, set success message
-    if (pdfBlob) {
-      setSuccess('Your resume has been generated successfully! You can download it now.');
-
-      // Advance to the final step if not already there
-      if (activeStep !== steps.length) {
-        setActiveStep(steps.length);
-      }
-    }
+    setSuccess('Your resume has been generated successfully!');
   };
 
   const handleClosePreview = () => {
@@ -280,254 +195,202 @@ const App: React.FC = () => {
 
   const handleDownloadPdf = () => {
     if (pdfBlob) {
-      // Create a temporary link element and trigger the download
       const link = document.createElement('a');
       link.href = pdfBlob;
-      link.download = `${formData.name.replace(/\s+/g, '_')}_resume.pdf`;
+      link.download = 'resume.pdf';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
   };
 
+  const handleWelcomeDialogStart = () => {
+    setShowWelcomeDialog(false);
+  };
+
+  const handleWelcomeDialogSkip = () => {
+    setShowWelcomeDialog(false);
+  };
+
+  return (
+    <>
+      <AppBar position="static" color="primary">
+        <Toolbar>
+          <Typography variant="h6" component="div" className="app-title" sx={{ flexGrow: 1 }}>
+            ThoughtWorks Resume Builder
+          </Typography>
+          <TourControls />
+        </Toolbar>
+      </AppBar>
+
+      <Container component="main" maxWidth="lg" sx={{ mb: 4 }}>
+        <Box sx={{ mt: 4, mb: 4 }} className="sample-data-container">
+          <Button
+            variant="outlined"
+            onClick={loadSampleData}
+            className="sample-data-btn"
+            sx={{ mb: 2 }}
+          >
+            Load Sample Data
+          </Button>
+        </Box>
+
+        <Paper elevation={3} sx={{ p: { xs: 2, md: 3 } }}>
+          <Typography component="h1" variant="h4" align="center" className="form-title">
+            Build Your Resume
+          </Typography>
+          <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }} className="stepper-container">
+            {steps.map(label => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          {activeStep === steps.length ? (
+            <Box>
+              <Typography variant="h5" gutterBottom>
+                Thank you for using ThoughtWorks Resume Builder!
+              </Typography>
+              <Typography variant="subtitle1">
+                Your resume has been created successfully. You can download it by clicking the button
+                below.
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleDownloadPdf}
+                  sx={{ mr: 1 }}
+                >
+                  Download PDF
+                </Button>
+                <Button variant="outlined" onClick={handleReset}>
+                  Create Another Resume
+                </Button>
+              </Box>
+            </Box>
+          ) : (
+            <Box className="form-container">
+              {getStepContent(activeStep, formData, setFormData, setActiveStep)}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }} className="navigation-btns">
+                <Button
+                  color="inherit"
+                  disabled={activeStep === 0}
+                  onClick={handleBack}
+                  sx={{ mr: 1 }}
+                >
+                  Back
+                </Button>
+                <Box>
+                  {activeStep === steps.length - 1 ? (
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={handleSubmit}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? <CircularProgress size={24} /> : 'Generate Resume'}
+                    </Button>
+                  ) : (
+                    <Button variant="contained" onClick={handleNext}>
+                      Next
+                    </Button>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </Paper>
+
+        {error && (
+          <Box sx={{ mt: 2 }}>
+            <Typography color="error">{error}</Typography>
+          </Box>
+        )}
+        {success && (
+          <Box sx={{ mt: 2 }}>
+            <Typography color="success.main">{success}</Typography>
+          </Box>
+        )}
+
+        {/* Modal for PDF preview */}
+        <Modal
+          open={previewOpen}
+          onClose={handleClosePreview}
+          aria-labelledby="preview-modal-title"
+          aria-describedby="preview-modal-description"
+        >
+          <Box sx={modalStyle}>
+            <Typography id="preview-modal-title" variant="h6" component="h2" gutterBottom>
+              Resume Preview
+            </Typography>
+            {pdfBlob && (
+              <Box sx={{ width: '100%', height: '70vh' }}>
+                <iframe
+                  src={pdfBlob}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                  title="Resume Preview"
+                />
+              </Box>
+            )}
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+              <Button onClick={handleClosePreview} color="inherit">
+                Close
+              </Button>
+              <Button onClick={handleDownloadPdf} variant="contained" color="primary">
+                Download
+              </Button>
+            </Box>
+          </Box>
+        </Modal>
+
+        {/* Confirmation Dialog */}
+        <Dialog
+          open={confirmOpen}
+          onClose={handleCloseConfirm}
+          aria-labelledby="alert-dialog-title"
+          aria-describedby="alert-dialog-description"
+        >
+          <DialogTitle id="alert-dialog-title">Generate Resume</DialogTitle>
+          <DialogContent>
+            <DialogContentText id="alert-dialog-description">
+              Are you ready to generate your resume? Please make sure all information is correct.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseConfirm} color="inherit">
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmSubmit} color="primary" autoFocus>
+              Generate
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Welcome Dialog for Tour */}
+        <TourWelcomeDialog
+          open={showWelcomeDialog}
+          onStartTour={handleWelcomeDialogStart}
+          onSkipTour={handleWelcomeDialogSkip}
+        />
+
+        {/* Tour Manager */}
+        <TourManager steps={defaultTourSteps} />
+      </Container>
+    </>
+  );
+};
+
+const App: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-
-      {/* Tour guide */}
-      <Joyride
-        steps={tourSteps}
-        run={runTour}
-        continuous
-        showSkipButton
-        styles={{
-          options: {
-            primaryColor: theme.palette.primary.main,
-          },
-        }}
-        callback={handleJoyrideCallback}
-      />
-
-      {/* Skip tour dialog */}
-      <Dialog
-        open={skipTourOpen}
-        onClose={skipTour}
-        aria-labelledby="tour-dialog-title"
-        aria-describedby="tour-dialog-description"
-      >
-        <DialogTitle id="tour-dialog-title">Welcome to the Resume Builder!</DialogTitle>
-        <DialogContent>
-          <DialogContentText id="tour-dialog-description">
-            Would you like to take a quick tour to learn how this tool works?
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={skipTour} color="primary">
-            Skip Tour
-          </Button>
-          <Button onClick={startTour} color="primary" variant="contained" autoFocus>
-            Take Tour
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Sample data dialog */}
-      <Dialog
-        open={confirmOpen}
-        onClose={handleCloseConfirm}
-        aria-labelledby="sample-dialog-title"
-        aria-describedby="sample-dialog-description"
-      >
-        <DialogTitle id="sample-dialog-title">Sample Data Loaded</DialogTitle>
-        <DialogContent>
-          <DialogContentText id="sample-dialog-description">
-            Sample data has been loaded into the form fields. This is example data to help you
-            understand the format expected in each field. Please review and replace with your own
-            information.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseConfirm} color="primary" autoFocus>
-            Got it
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* PDF Preview Modal */}
-      <Modal
-        open={previewOpen}
-        onClose={handleClosePreview}
-        aria-labelledby="pdf-preview-title"
-        aria-describedby="pdf-preview-description"
-      >
-        <Box sx={modalStyle}>
-          <Typography id="pdf-preview-title" variant="h6" component="h2" gutterBottom>
-            Resume Preview
-          </Typography>
-          {pdfBlob ? (
-            <Box
-              component="iframe"
-              src={pdfBlob}
-              sx={{
-                width: '100%',
-                height: '70vh',
-                border: 'none',
-              }}
-              title="Resume PDF preview"
-            />
-          ) : (
-            <Typography>Loading preview...</Typography>
-          )}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-            <Button onClick={handleClosePreview} sx={{ mr: 1 }}>
-              Close
-            </Button>
-            {pdfBlob && (
-              <Button variant="contained" color="primary" onClick={handleDownloadPdf}>
-                Download PDF
-              </Button>
-            )}
-          </Box>
-        </Box>
-      </Modal>
-
-      <Container component="main" maxWidth="md" sx={{ mb: 4 }}>
-        <Box
-          sx={{
-            my: 4,
-            p: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            backgroundColor: 'white',
-            borderRadius: 2,
-            boxShadow: 1,
-          }}
-        >
-          <Typography component="h1" variant="h4" align="center" className="app-title" gutterBottom>
-            Resume Builder
-          </Typography>
-          <Typography variant="body1" align="center" color="text.secondary" sx={{ mb: 3 }}>
-            Create a professional resume in minutes. Follow the steps below to generate your resume.
-          </Typography>
-
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              width: '100%',
-              mb: 4,
-            }}
-          >
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={loadSampleData}
-              className="sample-data-btn"
-              sx={{ mr: 1 }}
-            >
-              Load Sample Data
-            </Button>
-
-            <Tooltip title="Take a tour of the application">
-              <IconButton
-                aria-label="help"
-                onClick={startTour}
-                color="primary"
-                className="help-btn"
-              >
-                <HelpOutlineIcon />
-              </IconButton>
-            </Tooltip>
-          </Box>
-
-          <Box sx={{ width: '100%' }} className="stepper-container">
-            <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
-              {steps.map(label => (
-                <Step key={label}>
-                  <StepLabel>{label}</StepLabel>
-                </Step>
-              ))}
-            </Stepper>
-
-            {activeStep === steps.length ? (
-              <React.Fragment>
-                <Typography variant="h5" gutterBottom>
-                  {success ? 'Resume generation complete!' : 'Processing your resume...'}
-                </Typography>
-                <Typography variant="subtitle1">
-                  {success ? success : 'We are preparing your resume. This may take a moment...'}
-                </Typography>
-                {isSubmitting && (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-                    <CircularProgress />
-                  </Box>
-                )}
-                {error && (
-                  <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-                    {error}
-                  </Typography>
-                )}
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-                  <Button onClick={handleReset} sx={{ mr: 1 }}>
-                    Create Another Resume
-                  </Button>
-                  {pdfBlob && (
-                    <>
-                      <Button
-                        variant="outlined"
-                        color="primary"
-                        onClick={() => setPreviewOpen(true)}
-                        sx={{ mr: 1 }}
-                      >
-                        Preview
-                      </Button>
-                      <Button variant="contained" color="primary" onClick={handleDownloadPdf}>
-                        Download PDF
-                      </Button>
-                    </>
-                  )}
-                </Box>
-              </React.Fragment>
-            ) : (
-              <React.Fragment>
-                <Box className="form-container">
-                  {getStepContent(activeStep, formData, setFormData, setActiveStep)}
-                </Box>
-                <Box
-                  sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}
-                  className="navigation-btns"
-                >
-                  {activeStep !== 0 && (
-                    <Button onClick={handleBack} sx={{ mr: 1 }}>
-                      Back
-                    </Button>
-                  )}
-
-                  {activeStep === steps.length - 1 && (
-                    <Button
-                      variant="outlined"
-                      onClick={handlePreview}
-                      disabled={isSubmitting}
-                      sx={{ mr: 1 }}
-                    >
-                      Preview Resume
-                    </Button>
-                  )}
-
-                  <Button
-                    variant="contained"
-                    onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
-                    disabled={isSubmitting}
-                  >
-                    {activeStep === steps.length - 1 ? 'Generate Resume' : 'Next'}
-                  </Button>
-                </Box>
-              </React.Fragment>
-            )}
-          </Box>
-        </Box>
-      </Container>
+      <TourProvider initialSteps={defaultTourSteps}>
+        <AppContent />
+      </TourProvider>
     </ThemeProvider>
   );
 };
