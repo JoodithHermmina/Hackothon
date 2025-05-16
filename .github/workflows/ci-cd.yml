@@ -331,7 +331,7 @@ jobs:
         cd terraform
         terraform init
         
-    - name: Import Existing Resources
+    - name: Import and Sync AWS Resources
       env:
         TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
         TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
@@ -339,7 +339,7 @@ jobs:
       run: |
         cd terraform
         
-        echo "Attempting to import existing resources into Terraform state..."
+        echo "Attempting to import and sync existing resources into Terraform state..."
         
         # Function to safely attempt importing a resource
         import_resource() {
@@ -351,7 +351,7 @@ jobs:
           if ! terraform state show "$RESOURCE_TYPE.$RESOURCE_NAME" &>/dev/null; then
             echo "Resource $RESOURCE_TYPE.$RESOURCE_NAME not in state, attempting to import..."
             terraform import "$RESOURCE_TYPE.$RESOURCE_NAME" "$RESOURCE_ID" || {
-              echo "Import failed, but continuing with other resources..."
+              echo "Import failed for $RESOURCE_TYPE.$RESOURCE_NAME, but continuing with other resources..."
             }
           else
             echo "Resource $RESOURCE_TYPE.$RESOURCE_NAME already in state."
@@ -361,31 +361,31 @@ jobs:
         # Load Balancer
         echo "Attempting to import Load Balancer..."
         LB_ARN=$(aws elbv2 describe-load-balancers --names resume-builder-lb --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || echo "")
-        if [ ! -z "$LB_ARN" ]; then
+        if [ ! -z "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
           import_resource "aws_lb" "resume_builder" "$LB_ARN"
         fi
         
         # Target Groups
         echo "Attempting to import Target Groups..."
         FRONTEND_TG_ARN=$(aws elbv2 describe-target-groups --names resume-frontend-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
-        if [ ! -z "$FRONTEND_TG_ARN" ]; then
+        if [ ! -z "$FRONTEND_TG_ARN" ] && [ "$FRONTEND_TG_ARN" != "None" ]; then
           import_resource "aws_lb_target_group" "frontend" "$FRONTEND_TG_ARN"
         fi
         
         BACKEND_TG_ARN=$(aws elbv2 describe-target-groups --names resume-backend-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
-        if [ ! -z "$BACKEND_TG_ARN" ]; then
+        if [ ! -z "$BACKEND_TG_ARN" ] && [ "$BACKEND_TG_ARN" != "None" ]; then
           import_resource "aws_lb_target_group" "backend" "$BACKEND_TG_ARN"
         fi
         
         # IAM Roles
         echo "Attempting to import IAM Roles..."
         EXEC_ROLE_ARN=$(aws iam get-role --role-name resume-builder-ecs-execution-role --query 'Role.Arn' --output text 2>/dev/null || echo "")
-        if [ ! -z "$EXEC_ROLE_ARN" ]; then
+        if [ ! -z "$EXEC_ROLE_ARN" ] && [ "$EXEC_ROLE_ARN" != "None" ]; then
           import_resource "aws_iam_role" "ecs_execution_role" "resume-builder-ecs-execution-role"
         fi
         
         TASK_ROLE_ARN=$(aws iam get-role --role-name resume-builder-ecs-task-role --query 'Role.Arn' --output text 2>/dev/null || echo "")
-        if [ ! -z "$TASK_ROLE_ARN" ]; then
+        if [ ! -z "$TASK_ROLE_ARN" ] && [ "$TASK_ROLE_ARN" != "None" ]; then
           import_resource "aws_iam_role" "ecs_task_role" "resume-builder-ecs-task-role"
         fi
         
@@ -399,138 +399,186 @@ jobs:
           import_resource "aws_cloudwatch_log_group" "backend" "/ecs/resume-backend"
         fi
         
-        echo "Import operations completed."
-    
-    - name: Verify and Sync Task Definition Versions
-      env:
-        TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
-        TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
-        TF_VAR_app_name: ${{ env.APP_NAME }}
-      run: |
-        cd terraform
+        # ECS Cluster
+        echo "Attempting to import ECS Cluster..."
+        ECS_CLUSTER_ARN=$(aws ecs describe-clusters --clusters resume-builder-cluster --query 'clusters[0].clusterArn' --output text 2>/dev/null || echo "")
+        if [ ! -z "$ECS_CLUSTER_ARN" ] && [ "$ECS_CLUSTER_ARN" != "None" ]; then
+          import_resource "aws_ecs_cluster" "resume_builder" "$ECS_CLUSTER_ARN"
+        fi
         
-        echo "Verifying ECS task definition versions..."
+        # Load Balancer Listeners
+        echo "Attempting to import Load Balancer Listeners..."
+        if [ ! -z "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
+          # Import frontend listener (HTTP:80)
+          FRONTEND_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" --query "Listeners[?Port==\`80\`].ListenerArn" --output text 2>/dev/null || echo "")
+          if [ ! -z "$FRONTEND_LISTENER_ARN" ] && [ "$FRONTEND_LISTENER_ARN" != "None" ]; then
+            import_resource "aws_lb_listener" "frontend" "$FRONTEND_LISTENER_ARN"
+          fi
+          
+          # Import backend listener (API port, typically 8080)
+          BACKEND_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" --query "Listeners[?Port==\`8080\`].ListenerArn" --output text 2>/dev/null || echo "")
+          if [ ! -z "$BACKEND_LISTENER_ARN" ] && [ "$BACKEND_LISTENER_ARN" != "None" ]; then
+            import_resource "aws_lb_listener" "backend" "$BACKEND_LISTENER_ARN"
+          fi
+        fi
+
+        # ===== ECS Services and Task Definitions Sync =====
+        echo "Starting ECS Services and Task Definitions Sync..."
         
         # Backend service
-        echo "Checking backend service..."
+        echo "Checking backend service and task definition..."
         if aws ecs describe-services --cluster resume-builder-cluster --services resume-backend-service &>/dev/null; then
           # Get backend task definition ARN
           BACKEND_SERVICE_TASK_DEF=$(aws ecs describe-services \
             --cluster resume-builder-cluster \
             --services resume-backend-service \
             --query 'services[0].taskDefinition' \
-            --output text)
+            --output text 2>/dev/null || echo "")
             
-          echo "Backend service is using task definition: $BACKEND_SERVICE_TASK_DEF"
-          
-          # Extract just the family and revision
-          BACKEND_TASK_DEF_SHORT=$(echo "$BACKEND_SERVICE_TASK_DEF" | sed 's/.*task-definition\///')
-          
-          # Try to describe the task definition using just family:revision format
-          echo "Verifying backend task definition exists..."
-          if aws ecs describe-task-definition --task-definition "$BACKEND_TASK_DEF_SHORT" &>/dev/null; then
-            echo "Backend task definition verified successfully"
+          if [ ! -z "$BACKEND_SERVICE_TASK_DEF" ] && [ "$BACKEND_SERVICE_TASK_DEF" != "None" ]; then
+            echo "Backend service is using task definition: $BACKEND_SERVICE_TASK_DEF"
             
-            # Check if it's in Terraform state and if it matches
-            if terraform state list 2>/dev/null | grep -q "aws_ecs_task_definition.backend"; then
-              BACKEND_TF_TASK_DEF=$(terraform state show aws_ecs_task_definition.backend 2>/dev/null | grep "arn =" | head -1 | sed 's/.*= "\(.*\)".*/\1/')
-              echo "Terraform backend task definition: $BACKEND_TF_TASK_DEF"
+            # Extract just the family and revision
+            BACKEND_TASK_DEF_SHORT=$(echo "$BACKEND_SERVICE_TASK_DEF" | sed 's/.*task-definition\///')
+            
+            # Try to describe the task definition
+            echo "Verifying backend task definition exists..."
+            if aws ecs describe-task-definition --task-definition "$BACKEND_TASK_DEF_SHORT" &>/dev/null; then
+              echo "Backend task definition verified successfully"
               
-              # Check if they match
-              if [[ "$BACKEND_SERVICE_TASK_DEF" != "$BACKEND_TF_TASK_DEF" ]]; then
-                echo "Mismatch detected in backend task definition!"
-                echo "Service is using: $BACKEND_SERVICE_TASK_DEF"
-                echo "Terraform state has: $BACKEND_TF_TASK_DEF"
+              # Import the service first if it doesn't exist in state
+              echo "Checking if backend service exists in state..."
+              if ! terraform state show "aws_ecs_service.backend" &>/dev/null; then
+                echo "Attempting to import backend service..."
+                terraform import "aws_ecs_service.backend" "resume-builder-cluster/resume-backend-service" || {
+                  echo "Import failed for backend service, but continuing..."
+                }
+              fi
+              
+              # Check if task definition is in Terraform state and if it matches
+              if terraform state list 2>/dev/null | grep -q "aws_ecs_task_definition.backend"; then
+                BACKEND_TF_TASK_DEF=$(terraform state show aws_ecs_task_definition.backend 2>/dev/null | grep "arn =" | head -1 | sed 's/.*= "\(.*\)".*/\1/' || echo "")
                 
-                # Remove from state and reimport correct version
-                echo "Syncing backend task definition..."
-                terraform state rm aws_ecs_task_definition.backend
-                echo "Importing: $BACKEND_SERVICE_TASK_DEF"
-                if terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF" &>/dev/null; then
-                  echo "Successfully imported backend task definition"
+                if [ ! -z "$BACKEND_TF_TASK_DEF" ]; then
+                  echo "Terraform backend task definition: $BACKEND_TF_TASK_DEF"
+                  
+                  # Check if they match
+                  if [[ "$BACKEND_SERVICE_TASK_DEF" != "$BACKEND_TF_TASK_DEF" ]]; then
+                    echo "Mismatch detected in backend task definition!"
+                    echo "Service is using: $BACKEND_SERVICE_TASK_DEF"
+                    echo "Terraform state has: $BACKEND_TF_TASK_DEF"
+                    
+                    # Remove from state and reimport correct version
+                    echo "Syncing backend task definition..."
+                    terraform state rm aws_ecs_task_definition.backend
+                    echo "Importing: $BACKEND_SERVICE_TASK_DEF"
+                    terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF" || {
+                      echo "Warning: Import failed for backend task definition. Will let Terraform create a new one."
+                    }
+                  else
+                    echo "Backend task definition in Terraform state matches service. No action needed."
+                  fi
                 else
-                  echo "Warning: Import failed for backend task definition. Will let Terraform create a new one."
+                  echo "Failed to extract task definition ARN from state, attempting to import anyway."
+                  terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF" || {
+                    echo "Warning: Import failed for backend task definition. Will let Terraform create a new one."
+                  }
                 fi
               else
-                echo "Backend task definition in Terraform state matches service. No action needed."
+                echo "Backend task definition not in Terraform state. Will import."
+                terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF" || {
+                  echo "Warning: Import failed for backend task definition. Will let Terraform create a new one."
+                }
               fi
             else
-              echo "Backend task definition not in Terraform state. Will import."
-              if terraform import aws_ecs_task_definition.backend "$BACKEND_SERVICE_TASK_DEF" &>/dev/null; then
-                echo "Successfully imported backend task definition"
-              else
-                echo "Warning: Import failed for backend task definition. Will let Terraform create a new one."
-              fi
+              echo "Warning: Backend task definition $BACKEND_SERVICE_TASK_DEF exists in service but can't be described."
+              echo "This might be a permissions issue. Proceeding without importing."
             fi
           else
-            echo "Warning: Backend task definition $BACKEND_SERVICE_TASK_DEF exists in service but can't be described."
-            echo "This might be a permissions issue. Proceeding without importing."
+            echo "Failed to get task definition for backend service. Skipping task definition sync."
           fi
         else
           echo "Backend service doesn't exist yet. Skipping task definition sync."
         fi
         
         # Frontend service
-        echo "Checking frontend service..."
+        echo "Checking frontend service and task definition..."
         if aws ecs describe-services --cluster resume-builder-cluster --services resume-frontend-service &>/dev/null; then
           # Get frontend task definition ARN
           FRONTEND_SERVICE_TASK_DEF=$(aws ecs describe-services \
             --cluster resume-builder-cluster \
             --services resume-frontend-service \
             --query 'services[0].taskDefinition' \
-            --output text)
+            --output text 2>/dev/null || echo "")
             
-          echo "Frontend service is using task definition: $FRONTEND_SERVICE_TASK_DEF"
-          
-          # Extract just the family and revision
-          FRONTEND_TASK_DEF_SHORT=$(echo "$FRONTEND_SERVICE_TASK_DEF" | sed 's/.*task-definition\///')
-          
-          # Try to describe the task definition using just family:revision format
-          echo "Verifying frontend task definition exists..."
-          if aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_DEF_SHORT" &>/dev/null; then
-            echo "Frontend task definition verified successfully"
+          if [ ! -z "$FRONTEND_SERVICE_TASK_DEF" ] && [ "$FRONTEND_SERVICE_TASK_DEF" != "None" ]; then
+            echo "Frontend service is using task definition: $FRONTEND_SERVICE_TASK_DEF"
             
-            # Check if it's in Terraform state and if it matches
-            if terraform state list 2>/dev/null | grep -q "aws_ecs_task_definition.frontend"; then
-              FRONTEND_TF_TASK_DEF=$(terraform state show aws_ecs_task_definition.frontend 2>/dev/null | grep "arn =" | head -1 | sed 's/.*= "\(.*\)".*/\1/')
-              echo "Terraform frontend task definition: $FRONTEND_TF_TASK_DEF"
+            # Extract just the family and revision
+            FRONTEND_TASK_DEF_SHORT=$(echo "$FRONTEND_SERVICE_TASK_DEF" | sed 's/.*task-definition\///')
+            
+            # Try to describe the task definition
+            echo "Verifying frontend task definition exists..."
+            if aws ecs describe-task-definition --task-definition "$FRONTEND_TASK_DEF_SHORT" &>/dev/null; then
+              echo "Frontend task definition verified successfully"
               
-              # Check if they match
-              if [[ "$FRONTEND_SERVICE_TASK_DEF" != "$FRONTEND_TF_TASK_DEF" ]]; then
-                echo "Mismatch detected in frontend task definition!"
-                echo "Service is using: $FRONTEND_SERVICE_TASK_DEF"
-                echo "Terraform state has: $FRONTEND_TF_TASK_DEF"
+              # Import the service first if it doesn't exist in state
+              echo "Checking if frontend service exists in state..."
+              if ! terraform state show "aws_ecs_service.frontend" &>/dev/null; then
+                echo "Attempting to import frontend service..."
+                terraform import "aws_ecs_service.frontend" "resume-builder-cluster/resume-frontend-service" || {
+                  echo "Import failed for frontend service, but continuing..."
+                }
+              fi
+              
+              # Check if task definition is in Terraform state and if it matches
+              if terraform state list 2>/dev/null | grep -q "aws_ecs_task_definition.frontend"; then
+                FRONTEND_TF_TASK_DEF=$(terraform state show aws_ecs_task_definition.frontend 2>/dev/null | grep "arn =" | head -1 | sed 's/.*= "\(.*\)".*/\1/' || echo "")
                 
-                # Remove from state and reimport correct version
-                echo "Syncing frontend task definition..."
-                terraform state rm aws_ecs_task_definition.frontend
-                echo "Importing: $FRONTEND_SERVICE_TASK_DEF"
-                if terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF" &>/dev/null; then
-                  echo "Successfully imported frontend task definition"
+                if [ ! -z "$FRONTEND_TF_TASK_DEF" ]; then
+                  echo "Terraform frontend task definition: $FRONTEND_TF_TASK_DEF"
+                  
+                  # Check if they match
+                  if [[ "$FRONTEND_SERVICE_TASK_DEF" != "$FRONTEND_TF_TASK_DEF" ]]; then
+                    echo "Mismatch detected in frontend task definition!"
+                    echo "Service is using: $FRONTEND_SERVICE_TASK_DEF"
+                    echo "Terraform state has: $FRONTEND_TF_TASK_DEF"
+                    
+                    # Remove from state and reimport correct version
+                    echo "Syncing frontend task definition..."
+                    terraform state rm aws_ecs_task_definition.frontend
+                    echo "Importing: $FRONTEND_SERVICE_TASK_DEF"
+                    terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF" || {
+                      echo "Warning: Import failed for frontend task definition. Will let Terraform create a new one."
+                    }
+                  else
+                    echo "Frontend task definition in Terraform state matches service. No action needed."
+                  fi
                 else
-                  echo "Warning: Import failed for frontend task definition. Will let Terraform create a new one."
+                  echo "Failed to extract task definition ARN from state, attempting to import anyway."
+                  terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF" || {
+                    echo "Warning: Import failed for frontend task definition. Will let Terraform create a new one."
+                  }
                 fi
               else
-                echo "Frontend task definition in Terraform state matches service. No action needed."
+                echo "Frontend task definition not in Terraform state. Will import."
+                terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF" || {
+                  echo "Warning: Import failed for frontend task definition. Will let Terraform create a new one."
+                }
               fi
             else
-              echo "Frontend task definition not in Terraform state. Will import."
-              if terraform import aws_ecs_task_definition.frontend "$FRONTEND_SERVICE_TASK_DEF" &>/dev/null; then
-                echo "Successfully imported frontend task definition"
-              else
-                echo "Warning: Import failed for frontend task definition. Will let Terraform create a new one."
-              fi
+              echo "Warning: Frontend task definition $FRONTEND_SERVICE_TASK_DEF exists in service but can't be described."
+              echo "This might be a permissions issue. Proceeding without importing."
             fi
           else
-            echo "Warning: Frontend task definition $FRONTEND_SERVICE_TASK_DEF exists in service but can't be described."
-            echo "This might be a permissions issue. Proceeding without importing."
+            echo "Failed to get task definition for frontend service. Skipping task definition sync."
           fi
         else
           echo "Frontend service doesn't exist yet. Skipping task definition sync."
         fi
         
-        echo "Task definition version verification and sync completed."
-
+        echo "Import and sync operations completed."
+    
     - name: Terraform Plan
       env:
         TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
@@ -553,6 +601,13 @@ jobs:
         
         echo "Using AWS Account ID: $TF_VAR_aws_account_id"
         
+        # Verify Terraform state after import and sync
+        echo "Verifying Terraform state integrity after import and sync..."
+        terraform state list | grep -E "aws_ecs_task_definition|aws_ecs_service|aws_lb|aws_lb_target_group|aws_iam_role|aws_cloudwatch_log_group|aws_ecs_cluster" || {
+          echo "Warning: Some expected resources may be missing from the Terraform state."
+          echo "Proceeding with caution. The plan may show resources that need to be created."
+        }
+        
         # Check for potentially tainted resources and untaint them
         echo "Checking for potentially tainted resources..."
         TAINTED_RESOURCES=$(terraform state list | grep -E "aws_ecs_task_definition|aws_ecs_service" || true)
@@ -561,20 +616,36 @@ jobs:
           echo "Checking if $resource is tainted..."
           if terraform state show $resource 2>&1 | grep -q "Tainted"; then
             echo "Untainting resource: $resource"
-            terraform untaint $resource
+            terraform untaint $resource || echo "Failed to untaint $resource, but continuing..."
           fi
         done
         
         # Refresh state to ensure it's synchronized with actual resources
         echo "Refreshing Terraform state..."
-        terraform refresh
+        terraform refresh || {
+          echo "Warning: State refresh had issues, but continuing with plan..."
+        }
         
         # Save plan to file for validation
+        echo "Creating Terraform plan..."
         terraform plan \
           -var "aws_account_id=$TF_VAR_aws_account_id" \
           -var "image_tag=${{ github.sha }}" \
           -var "aws_region=${{ env.AWS_REGION }}" \
           -out=tfplan
+        
+        # Analyze plan for potential issues
+        echo "Analyzing plan for potential issues..."
+        terraform show -json tfplan > tfplan.json
+        
+        # Check for resource replacements that might cause downtime
+        REPLACEMENTS=$(jq -r '.resource_changes[] | select(.change.actions[] == "delete" and .change.actions[] == "create") | .address' tfplan.json || echo "")
+        if [ ! -z "$REPLACEMENTS" ]; then
+          echo "Warning: The following resources will be replaced (delete and recreate):"
+          echo "$REPLACEMENTS"
+          echo "This may cause service interruption. Review the plan carefully."
+          # We don't exit with error because sometimes replacements are necessary
+        fi
 
     # Commenting out validation step temporarily to test pipeline flow
     # - name: Validate Terraform Configuration
@@ -647,40 +718,114 @@ jobs:
       run: |
         cd terraform
         
+        # Apply with staged recovery approach
+        echo "Starting Terraform apply with staged recovery..."
+        
         # First try to apply the plan
         echo "Applying Terraform plan..."
         if ! terraform apply tfplan; then
-          echo "Initial apply failed, checking for tainted resources..."
+          echo "Initial apply failed, starting recovery procedures..."
           
-          # Identify potentially tainted resources
-          TAINTED_RESOURCES=$(terraform state list | grep -E "aws_ecs_task_definition|aws_ecs_service" || true)
+          # Check for specific error patterns
+          APPLY_ERROR=$(terraform apply tfplan 2>&1 | tee apply_error.log || true)
+          
+          if grep -q "Error: Error creating ECS service: ResourceInUse" apply_error.log; then
+            echo "Detected ECS service already exists error - attempting to import services..."
+            
+            # Try to import the services directly
+            echo "Attempting to import ECS services..."
+            terraform import aws_ecs_service.backend "resume-builder-cluster/resume-backend-service" || true
+            terraform import aws_ecs_service.frontend "resume-builder-cluster/resume-frontend-service" || true
+          fi
+          
+          if grep -q "Error: Error creating Target Group" apply_error.log; then
+            echo "Detected target group already exists error - attempting to import target groups..."
+            
+            # Get target group ARNs and import
+            BACKEND_TG_ARN=$(aws elbv2 describe-target-groups --names resume-backend-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
+            if [ ! -z "$BACKEND_TG_ARN" ] && [ "$BACKEND_TG_ARN" != "None" ]; then
+              terraform import aws_lb_target_group.backend "$BACKEND_TG_ARN" || true
+            fi
+            
+            FRONTEND_TG_ARN=$(aws elbv2 describe-target-groups --names resume-frontend-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
+            if [ ! -z "$FRONTEND_TG_ARN" ] && [ "$FRONTEND_TG_ARN" != "None" ]; then
+              terraform import aws_lb_target_group.frontend "$FRONTEND_TG_ARN" || true
+            fi
+          fi
+          
+          # Handle duplicate listener error
+          if grep -q "DuplicateListener: A listener already exists on this port for this load balancer" apply_error.log; then
+            echo "Detected duplicate listener error - attempting to import load balancer listeners..."
+            
+            # Get load balancer ARN
+            LB_ARN=$(aws elbv2 describe-load-balancers --names resume-builder-lb --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || echo "")
+            
+            if [ ! -z "$LB_ARN" ] && [ "$LB_ARN" != "None" ]; then
+              # Import frontend listener (HTTP:80)
+              FRONTEND_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" --query "Listeners[?Port==\`80\`].ListenerArn" --output text 2>/dev/null || echo "")
+              if [ ! -z "$FRONTEND_LISTENER_ARN" ] && [ "$FRONTEND_LISTENER_ARN" != "None" ]; then
+                echo "Importing frontend listener: $FRONTEND_LISTENER_ARN"
+                terraform import aws_lb_listener.frontend "$FRONTEND_LISTENER_ARN" || true
+              fi
+              
+              # Import backend listener (API port, typically 8080)
+              BACKEND_LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "$LB_ARN" --query "Listeners[?Port==\`8080\`].ListenerArn" --output text 2>/dev/null || echo "")
+              if [ ! -z "$BACKEND_LISTENER_ARN" ] && [ "$BACKEND_LISTENER_ARN" != "None" ]; then
+                echo "Importing backend listener: $BACKEND_LISTENER_ARN"
+                terraform import aws_lb_listener.backend "$BACKEND_LISTENER_ARN" || true
+              fi
+            fi
+          fi
+          
+          # Identify and untaint resources that might be causing issues
+          echo "Checking for tainted resources in state..."
+          TAINTED_RESOURCES=$(terraform state list | grep -E "aws_ecs_task_definition|aws_ecs_service|aws_iam_role|aws_lb|aws_lb_target_group" || true)
           
           # Untaint any resources that might be causing issues
           for resource in $TAINTED_RESOURCES; do
             echo "Checking if $resource is tainted..."
             if terraform state show $resource | grep -q "Tainted"; then
               echo "Untainting resource: $resource"
-              terraform untaint $resource || true
-            else
-              echo "Resource $resource is not tainted, skipping."
+              terraform untaint $resource || echo "Failed to untaint $resource, but continuing..."
             fi
           done
           
           # Refresh the state
-          echo "Refreshing state after untainting..."
-          terraform refresh
+          echo "Refreshing state after recovery actions..."
+          terraform refresh || echo "State refresh had issues, but continuing..."
           
           # Create a new plan
-          echo "Creating new plan after untainting..."
+          echo "Creating new plan after recovery actions..."
           terraform plan \
             -var "aws_account_id=$TF_VAR_aws_account_id" \
             -var "image_tag=${{ github.sha }}" \
             -var "aws_region=${{ env.AWS_REGION }}" \
-            -out=tfplan
+            -out=tfplan_recovery
           
-          # Try apply again
-          echo "Attempting apply again after untainting..."
-          terraform apply tfplan
+          # Try apply again with the new plan
+          echo "Attempting apply again after recovery actions..."
+          if ! terraform apply tfplan_recovery; then
+            echo "Apply failed even after recovery actions."
+            echo "Performing final attempt with targeted applies for critical resources..."
+            
+            # List of critical resources to apply individually
+            CRITICAL_RESOURCES=(
+              "aws_ecs_task_definition.backend"
+              "aws_ecs_task_definition.frontend"
+              "aws_ecs_service.backend"
+              "aws_ecs_service.frontend"
+            )
+            
+            # Apply critical resources individually
+            for resource in "${CRITICAL_RESOURCES[@]}"; do
+              echo "Attempting targeted apply for $resource..."
+              terraform apply -target=$resource || echo "Targeted apply for $resource failed, but continuing..."
+            done
+            
+            # Final attempt with everything
+            echo "Final attempt with full apply..."
+            terraform apply
+          fi
         fi
 
     - name: Get Application URL
