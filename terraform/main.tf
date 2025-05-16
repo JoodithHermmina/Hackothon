@@ -1,13 +1,13 @@
 provider "aws" {
-  region = var.aws_region
+  region  = var.aws_region
 }
 
 # Store Terraform state in S3
 terraform {
   backend "s3" {
-    bucket = "resume-builder-tf-state"
+    bucket = "resume-builder-tf-state-565393046834"
     key    = "terraform.tfstate"
-    region = "us-east-1" # Bucket is in us-east-1
+    region = "us-east-1"
   }
 }
 
