@@ -167,7 +167,8 @@ Before the first GitHub Actions run, you need to:
 1. Create an S3 bucket for Terraform state:
 
 ```bash
-aws s3 mb s3://resume-builder-tf-state
+# Create S3 bucket for Terraform state
+aws s3 mb s3://resume-builder-tf-state-new
 ```
 
 2. Create the ECR repositories:
@@ -225,7 +226,6 @@ curl -I http://$APP_URL
 # Check the backend API
 curl -I http://$APP_URL/api
 ```
-
 ## Accessing the Application
 
 After deployment, the application will be available at the Load Balancer DNS name, which can be found in the Terraform outputs:
@@ -256,3 +256,4 @@ You can manually trigger the monitoring workflow from the GitHub Actions tab.
 3. **Application not accessible**
    - Verify security group rules allow traffic on port 80
    - Check ECS service status and events
+

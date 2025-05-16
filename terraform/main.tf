@@ -5,7 +5,7 @@ provider "aws" {
 # Store Terraform state in S3
 terraform {
   backend "s3" {
-    bucket = "resume-builder-tf-state-565393046834"
+    bucket = "resume-builder-tf-state-new"
     key    = "terraform.tfstate"
     region = "us-east-1"
   }

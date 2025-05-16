@@ -34,16 +34,16 @@ echo "Logged in as: $(aws sts get-caller-identity --query 'Arn' --output text)"
 echo "Using region: $REGION"
 echo ""
 
-# Create S3 bucket for Terraform state
-echo "Creating S3 bucket for Terraform state..."
-if ! aws s3api head-bucket --bucket resume-builder-tf-state 2>/dev/null; then
-    aws s3 mb s3://resume-builder-tf-state --region $REGION
-    aws s3api put-bucket-versioning \
-        --bucket resume-builder-tf-state \
-        --versioning-configuration Status=Enabled
-    echo "S3 bucket created and versioning enabled"
+# Check if S3 bucket exists for storing Terraform state
+echo "Checking if S3 bucket for Terraform state exists..."
+if ! aws s3api head-bucket --bucket resume-builder-tf-state-new 2>/dev/null; then
+  aws s3 mb s3://resume-builder-tf-state-new --region $REGION
+  aws s3api put-bucket-versioning \
+    --bucket resume-builder-tf-state-new \
+    --versioning-configuration Status=Enabled
+  echo "Created S3 bucket for Terraform state and enabled versioning"
 else
-    echo "S3 bucket already exists"
+  echo "S3 bucket for Terraform state already exists"
 fi
 
 # Create ECR repositories

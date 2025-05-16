@@ -44,7 +44,7 @@ variable "aws_account_id" {
 variable "tf_state_bucket" {
   description = "Name of the S3 bucket for Terraform state"
   type        = string
-  default     = "resume-builder-tf-state"
+  default     = "resume-builder-tf-state-new"
 }
 
 variable "app_name" {

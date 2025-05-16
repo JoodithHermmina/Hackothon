@@ -22,7 +22,7 @@ env:
   SECRET_NAME: ${{ secrets.SECRET_NAME || 'resume-builder/dev/app-secrets' }}
   REQUIRED_SECRETS: "AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ACCOUNT_ID APP_DOMAIN"
   IAM_ROLE: ${{ secrets.IAM_ROLE || 'github-actions-oidc-role' }}
-  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET || 'resume-builder-tf-state' }}
+  TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET || 'resume-builder-tf-state-new' }}
   APP_NAME: ${{ secrets.APP_NAME || 'resume-builder' }}
   ENVIRONMENT: ${{ secrets.ENVIRONMENT || 'dev' }}
   ALLOW_RESOURCE_DELETION: ${{ secrets.ALLOW_RESOURCE_DELETION || 'false' }}
