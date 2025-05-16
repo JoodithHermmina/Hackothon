@@ -331,6 +331,76 @@ jobs:
         cd terraform
         terraform init
         
+    - name: Import Existing Resources
+      env:
+        TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}
+        TF_VAR_environment: ${{ env.ENVIRONMENT || 'dev' }}
+        TF_VAR_app_name: ${{ env.APP_NAME }}
+      run: |
+        cd terraform
+        
+        echo "Attempting to import existing resources into Terraform state..."
+        
+        # Function to safely attempt importing a resource
+        import_resource() {
+          local RESOURCE_TYPE=$1
+          local RESOURCE_NAME=$2
+          local RESOURCE_ID=$3
+          
+          echo "Checking if $RESOURCE_TYPE.$RESOURCE_NAME exists in state..."
+          if ! terraform state show "$RESOURCE_TYPE.$RESOURCE_NAME" &>/dev/null; then
+            echo "Resource $RESOURCE_TYPE.$RESOURCE_NAME not in state, attempting to import..."
+            terraform import "$RESOURCE_TYPE.$RESOURCE_NAME" "$RESOURCE_ID" || {
+              echo "Import failed, but continuing with other resources..."
+            }
+          else
+            echo "Resource $RESOURCE_TYPE.$RESOURCE_NAME already in state."
+          fi
+        }
+        
+        # Load Balancer
+        echo "Attempting to import Load Balancer..."
+        LB_ARN=$(aws elbv2 describe-load-balancers --names resume-builder-lb --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || echo "")
+        if [ ! -z "$LB_ARN" ]; then
+          import_resource "aws_lb" "resume_builder" "$LB_ARN"
+        fi
+        
+        # Target Groups
+        echo "Attempting to import Target Groups..."
+        FRONTEND_TG_ARN=$(aws elbv2 describe-target-groups --names resume-frontend-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
+        if [ ! -z "$FRONTEND_TG_ARN" ]; then
+          import_resource "aws_lb_target_group" "frontend" "$FRONTEND_TG_ARN"
+        fi
+        
+        BACKEND_TG_ARN=$(aws elbv2 describe-target-groups --names resume-backend-tg --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || echo "")
+        if [ ! -z "$BACKEND_TG_ARN" ]; then
+          import_resource "aws_lb_target_group" "backend" "$BACKEND_TG_ARN"
+        fi
+        
+        # IAM Roles
+        echo "Attempting to import IAM Roles..."
+        EXEC_ROLE_ARN=$(aws iam get-role --role-name resume-builder-ecs-execution-role --query 'Role.Arn' --output text 2>/dev/null || echo "")
+        if [ ! -z "$EXEC_ROLE_ARN" ]; then
+          import_resource "aws_iam_role" "ecs_execution_role" "resume-builder-ecs-execution-role"
+        fi
+        
+        TASK_ROLE_ARN=$(aws iam get-role --role-name resume-builder-ecs-task-role --query 'Role.Arn' --output text 2>/dev/null || echo "")
+        if [ ! -z "$TASK_ROLE_ARN" ]; then
+          import_resource "aws_iam_role" "ecs_task_role" "resume-builder-ecs-task-role"
+        fi
+        
+        # CloudWatch Logs
+        echo "Attempting to import CloudWatch Log Groups..."
+        if aws logs describe-log-groups --log-group-name-prefix "/ecs/resume-frontend" &>/dev/null; then
+          import_resource "aws_cloudwatch_log_group" "frontend" "/ecs/resume-frontend"
+        fi
+        
+        if aws logs describe-log-groups --log-group-name-prefix "/ecs/resume-backend" &>/dev/null; then
+          import_resource "aws_cloudwatch_log_group" "backend" "/ecs/resume-backend"
+        fi
+        
+        echo "Import operations completed."
+    
     - name: Verify and Sync Task Definition Versions
       env:
         TF_VAR_aws_account_id: ${{ steps.get-aws-credentials.outputs.aws_account_id }}

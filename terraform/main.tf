@@ -115,6 +115,17 @@ resource "aws_lb" "resume_builder" {
     Environment = var.environment
     Project     = "ResumeBuilder"
   }
+  
+  lifecycle {
+    # This prevents Terraform from recreating the load balancer if it already exists
+    ignore_changes = [
+      name,
+      subnets,
+      security_groups
+    ]
+    # Import if exists, else create
+    create_before_destroy = true
+  }
 }
 
 # Target Groups
@@ -134,6 +145,17 @@ resource "aws_lb_target_group" "frontend" {
     path                = "/"
     unhealthy_threshold = 3
   }
+  
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes = [
+      name,
+      port,
+      protocol,
+      vpc_id,
+      target_type
+    ]
+  }
 }
 
 resource "aws_lb_target_group" "backend" {
@@ -151,6 +173,17 @@ resource "aws_lb_target_group" "backend" {
     timeout             = 5
     path                = "/"
     unhealthy_threshold = 3
+  }
+  
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes = [
+      name,
+      port,
+      protocol,
+      vpc_id,
+      target_type
+    ]
   }
 }
 
@@ -189,8 +222,8 @@ resource "aws_ecs_task_definition" "backend" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = "512"
   memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
+  execution_role_arn       = "arn:aws:iam::${var.aws_account_id}:role/resume-builder-ecs-execution-role"
+  task_role_arn            = "arn:aws:iam::${var.aws_account_id}:role/resume-builder-ecs-task-role"
 
   container_definitions = jsonencode([
     {
@@ -223,7 +256,10 @@ resource "aws_ecs_task_definition" "backend" {
       # Ignore changes to tags
       tags,
       # Ignore changes to container definitions (including image tags)
-      container_definitions
+      container_definitions,
+      # Ignore changes to role ARNs
+      execution_role_arn,
+      task_role_arn
     ]
     # This ensures Terraform creates a new resource before destroying the old one
     create_before_destroy = true
@@ -236,8 +272,8 @@ resource "aws_ecs_task_definition" "frontend" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
   memory                   = "512"
-  execution_role_arn       = aws_iam_role.ecs_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
+  execution_role_arn       = "arn:aws:iam::${var.aws_account_id}:role/resume-builder-ecs-execution-role"
+  task_role_arn            = "arn:aws:iam::${var.aws_account_id}:role/resume-builder-ecs-task-role"
 
   container_definitions = jsonencode([
     {
@@ -270,7 +306,10 @@ resource "aws_ecs_task_definition" "frontend" {
       # Ignore changes to tags
       tags,
       # Ignore changes to container definitions (including image tags)
-      container_definitions
+      container_definitions,
+      # Ignore changes to role ARNs
+      execution_role_arn,
+      task_role_arn
     ]
     # This ensures Terraform creates a new resource before destroying the old one
     create_before_destroy = true
@@ -343,8 +382,16 @@ resource "aws_ecs_service" "frontend" {
 }
 
 # IAM Roles
+# First, try to import existing IAM roles with default value
+data "aws_iam_role" "ecs_execution_role" {
+  name = "resume-builder-ecs-execution-role"
+}
+
 resource "aws_iam_role" "ecs_execution_role" {
   name = "resume-builder-ecs-execution-role"
+  
+  # Create if not exists in state
+  count = 0
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -358,14 +405,28 @@ resource "aws_iam_role" "ecs_execution_role" {
       }
     ]
   })
+  
+  lifecycle {
+    ignore_changes = [
+      name,
+      assume_role_policy
+    ]
+    create_before_destroy = true
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
-  role       = aws_iam_role.ecs_execution_role.name
+  role       = "resume-builder-ecs-execution-role"
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+data "aws_iam_role" "ecs_task_role" {
+  name = "resume-builder-ecs-task-role"
+}
+
 resource "aws_iam_role" "ecs_task_role" {
+  # Create if not exists in state
+  count = 0
   name = "resume-builder-ecs-task-role"
 
   assume_role_policy = jsonencode({
@@ -380,15 +441,39 @@ resource "aws_iam_role" "ecs_task_role" {
       }
     ]
   })
+  
+  lifecycle {
+    ignore_changes = [
+      name,
+      assume_role_policy
+    ]
+    create_before_destroy = true
+  }
 }
 
 # CloudWatch Logs
 resource "aws_cloudwatch_log_group" "frontend" {
   name              = "/ecs/resume-frontend"
   retention_in_days = 30
+  
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      name,
+      retention_in_days
+    ]
+  }
 }
 
 resource "aws_cloudwatch_log_group" "backend" {
   name              = "/ecs/resume-backend"
   retention_in_days = 30
+  
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      name,
+      retention_in_days
+    ]
+  }
 }
