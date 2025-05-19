@@ -1,105 +1,105 @@
-name: Application Monitoring
-
-on:
-  schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours
-  workflow_dispatch:  # Allow manual trigger
-
-# Add permissions needed for OIDC
-permissions:
-  id-token: write
-  contents: read
-
-env:
-  AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
-  IAM_ROLE: ${{ secrets.IAM_ROLE || 'github-actions-oidc-role' }}
-  # Initial AWS Account ID for OIDC authentication
-  INITIAL_AWS_ACCOUNT_ID: "565393046834"
-
-jobs:
-  monitor:
-    name: Monitor Application Status
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Check out the repo
-      uses: actions/checkout@v3
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::${{ env.INITIAL_AWS_ACCOUNT_ID }}:role/${{ env.IAM_ROLE }}
-        aws-region: ${{ env.AWS_REGION }}
-        audience: sts.amazonaws.com
-        role-session-name: GitHubActionsOIDCSession
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.7
-
-    - name: Get application URL
-      id: get-url
-      run: |
-        # Use APP_DOMAIN secret directly instead of trying to get it from Terraform output
-        # This avoids the issues with Terraform output parsing
-        APP_URL="${{ secrets.APP_DOMAIN }}"
-
-        if [ -z "$APP_URL" ]; then
-          echo "APP_DOMAIN secret not set. Using fallback domain."
-          APP_URL="resume-builder-lb-991536061.ap-south-1.elb.amazonaws.com"
-        fi
-
-        echo "Using APP_URL: $APP_URL"
-        echo "APP_URL=$APP_URL" >> $GITHUB_OUTPUT
-
-    - name: Check frontend status
-      id: check-frontend
-      run: |
-        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ steps.get-url.outputs.APP_URL }})
-        if [ $HTTP_STATUS -ge 200 ] && [ $HTTP_STATUS -lt 300 ]; then
-          echo "Frontend status: OK ($HTTP_STATUS)"
-          echo "STATUS=OK" >> $GITHUB_OUTPUT
-        else
-          echo "Frontend status: ERROR ($HTTP_STATUS)"
-          echo "STATUS=ERROR" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Check backend status
-      id: check-backend
-      run: |
-        # Try multiple API endpoint variations to find the working one
-        ENDPOINTS=("/api/" "/api" "/api/sample-data")
-        WORKING_ENDPOINT=""
-
-        for ENDPOINT in "${ENDPOINTS[@]}"; do
-          echo "Trying endpoint: $ENDPOINT"
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ steps.get-url.outputs.APP_URL }}$ENDPOINT)
-          echo "Status code: $HTTP_STATUS"
-
-          if [ $HTTP_STATUS -ge 200 ] && [ $HTTP_STATUS -lt 300 ]; then
-            echo "Backend status: OK ($HTTP_STATUS)"
-            echo "STATUS=OK" >> $GITHUB_OUTPUT
-            echo "WORKING_ENDPOINT=$ENDPOINT" >> $GITHUB_OUTPUT
-            break
-          fi
-        done
-
-        # If no endpoint worked, report error with the last status code
-        if [ -z "$WORKING_ENDPOINT" ]; then
-          echo "Backend status: ERROR ($HTTP_STATUS)"
-          echo "STATUS=ERROR" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Send notification on error
-      if: steps.check-frontend.outputs.STATUS == 'ERROR' || steps.check-backend.outputs.STATUS == 'ERROR'
-      run: |
-        echo "⚠️ Application monitoring detected an issue with the ThoughtWorks Resume Builder"
-        echo "Frontend status: ${{ steps.check-frontend.outputs.STATUS }}"
-        echo "Backend status: ${{ steps.check-backend.outputs.STATUS }}"
-
-        if [[ "${{ steps.check-backend.outputs.STATUS }}" == "ERROR" ]]; then
-          echo "Backend API endpoint is not accessible. Try checking the API path configuration."
-        fi
-
-        echo "Please check the application at http://${{ steps.get-url.outputs.APP_URL }}"
+# name: Application Monitoring
+# 
+# on:
+#   schedule:
+#     - cron: '0 */6 * * *'  # Run every 6 hours
+#   workflow_dispatch:  # Allow manual trigger
+# 
+# # Add permissions needed for OIDC
+# permissions:
+#   id-token: write
+#   contents: read
+# 
+# env:
+#   AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+#   IAM_ROLE: ${{ secrets.IAM_ROLE || 'github-actions-oidc-role' }}
+#   # Initial AWS Account ID for OIDC authentication
+#   INITIAL_AWS_ACCOUNT_ID: "565393046834"
+# 
+# jobs:
+#   monitor:
+#     name: Monitor Application Status
+#     runs-on: ubuntu-latest
+# 
+#     steps:
+#     - name: Check out the repo
+#       uses: actions/checkout@v3
+# 
+#     - name: Configure AWS Credentials
+#       uses: aws-actions/configure-aws-credentials@v4
+#       with:
+#         role-to-assume: arn:aws:iam::${{ env.INITIAL_AWS_ACCOUNT_ID }}:role/${{ env.IAM_ROLE }}
+#         aws-region: ${{ env.AWS_REGION }}
+#         audience: sts.amazonaws.com
+#         role-session-name: GitHubActionsOIDCSession
+# 
+#     - name: Setup Terraform
+#       uses: hashicorp/setup-terraform@v2
+#       with:
+#         terraform_version: 1.5.7
+# 
+#     - name: Get application URL
+#       id: get-url
+#       run: |
+#         # Use APP_DOMAIN secret directly instead of trying to get it from Terraform output
+#         # This avoids the issues with Terraform output parsing
+#         APP_URL="${{ secrets.APP_DOMAIN }}"
+# 
+#         if [ -z "$APP_URL" ]; then
+#           echo "APP_DOMAIN secret not set. Using fallback domain."
+#           APP_URL="resume-builder-lb-991536061.ap-south-1.elb.amazonaws.com"
+#         fi
+# 
+#         echo "Using APP_URL: $APP_URL"
+#         echo "APP_URL=$APP_URL" >> $GITHUB_OUTPUT
+# 
+#     - name: Check frontend status
+#       id: check-frontend
+#       run: |
+#         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ steps.get-url.outputs.APP_URL }})
+#         if [ $HTTP_STATUS -ge 200 ] && [ $HTTP_STATUS -lt 300 ]; then
+#           echo "Frontend status: OK ($HTTP_STATUS)"
+#           echo "STATUS=OK" >> $GITHUB_OUTPUT
+#         else
+#           echo "Frontend status: ERROR ($HTTP_STATUS)"
+#           echo "STATUS=ERROR" >> $GITHUB_OUTPUT
+#         fi
+# 
+#     - name: Check backend status
+#       id: check-backend
+#       run: |
+#         # Try multiple API endpoint variations to find the working one
+#         ENDPOINTS=("/api/" "/api" "/api/sample-data")
+#         WORKING_ENDPOINT=""
+# 
+#         for ENDPOINT in "${ENDPOINTS[@]}"; do
+#           echo "Trying endpoint: $ENDPOINT"
+#           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ steps.get-url.outputs.APP_URL }}$ENDPOINT)
+#           echo "Status code: $HTTP_STATUS"
+# 
+#           if [ $HTTP_STATUS -ge 200 ] && [ $HTTP_STATUS -lt 300 ]; then
+#             echo "Backend status: OK ($HTTP_STATUS)"
+#             echo "STATUS=OK" >> $GITHUB_OUTPUT
+#             echo "WORKING_ENDPOINT=$ENDPOINT" >> $GITHUB_OUTPUT
+#             break
+#           fi
+#         done
+# 
+#         # If no endpoint worked, report error with the last status code
+#         if [ -z "$WORKING_ENDPOINT" ]; then
+#           echo "Backend status: ERROR ($HTTP_STATUS)"
+#           echo "STATUS=ERROR" >> $GITHUB_OUTPUT
+#         fi
+# 
+#     - name: Send notification on error
+#       if: steps.check-frontend.outputs.STATUS == 'ERROR' || steps.check-backend.outputs.STATUS == 'ERROR'
+#       run: |
+#         echo "⚠️ Application monitoring detected an issue with the ThoughtWorks Resume Builder"
+#         echo "Frontend status: ${{ steps.check-frontend.outputs.STATUS }}"
+#         echo "Backend status: ${{ steps.check-backend.outputs.STATUS }}"
+# 
+#         if [[ "${{ steps.check-backend.outputs.STATUS }}" == "ERROR" ]]; then
+#           echo "Backend API endpoint is not accessible. Try checking the API path configuration."
+#         fi
+# 
+#         echo "Please check the application at http://${{ steps.get-url.outputs.APP_URL }}"
